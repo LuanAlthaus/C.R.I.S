@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* Tokens: "mission control" — tinta profunda, papel cálido, un acento ámbar de señal. */
+:root {
+  --bg: #f4f1ea;
+  --surface: #fbf9f4;
+  --ink: #16181d;
+  --muted: #5d6270;
+  --line: #d9d4c7;
+  --signal: #c2410c;
+  --signal-soft: #fde8d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0d12;
+    --surface: #12151c;
+    --ink: #e9e6de;
+    --muted: #9097a6;
+    --line: #262b36;
+    --signal: #fb923c;
+    --signal-soft: #2a1a10;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+}
+
+/* Retícula sutil de fondo, como papel milimetrado de carta de navegación */
+.grid-paper {
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+  mask-image: linear-gradient(to bottom, black, transparent 85%);
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

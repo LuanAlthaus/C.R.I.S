@@ -1,0 +1,25 @@
+# Base
+jupyterlab
+pandas
+numpy
+requests
+python-dotenv
+duckdb
+matplotlib
+supabase
+
+# Datos de la Tierra (Earthdata, rasters, vectores)
+earthaccess
+xarray
+rioxarray
+netCDF4
+h5netcdf
+geopandas
+shapely
+pymannkendall
+asf_search
+
+# Planetario / astronomía
+astropy
+astroquery
+spiceypy
