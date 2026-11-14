@@ -56,7 +56,7 @@ Actualizado: 2026-11-14 17:25 -03. Se actualiza cada hora. Al abrir una sesión 
 - Fuentes de etiquetas investigadas por el subagente `NasaTerrainLabels`. Sin mapa público: SPOC, mapa de peligros TRN y NOAH-H (403). No sirven para parches orbitales: AI4Mars (imágenes de rover) y HiRISE labeled (clases sin transitabilidad).
 
 ## Siguiente
-1. En curso 17:25: wasm con `hazard.png` nuevo, `/tmp/mw3_check.py`, `pnpm lint && pnpm build`, commit en `kaz-tests` y push de esa rama (`git push git@github.com:LuanAlthaus/C.R.I.S.git kaz-tests:kaz-tests`).
+1. Hecho 17:35: rama **`kaz-tests`** publicada (`bbd8411`). Navegador: sin errores, capa Hazard visible y ya no marcada "not computed yet". La ruta de prueba pasa de 2009 m y 12,5° de pendiente máx. a 2115 m y 6,5°. `pnpm lint`/`build` OK. PR: https://github.com/LuanAlthaus/C.R.I.S/pull/new/kaz-tests
 2. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`.
 3. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
 4. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
