@@ -16,6 +16,7 @@ pub enum Overlay {
     Slope,
     Rough,
     Texture,
+    Rocks,
     Hazard,
     Thermal,
     Radiation,
@@ -24,11 +25,12 @@ pub enum Overlay {
 }
 
 impl Overlay {
-    pub const ALL: [Overlay; 9] = [
+    pub const ALL: [Overlay; 10] = [
         Overlay::None,
         Overlay::Slope,
         Overlay::Rough,
         Overlay::Texture,
+        Overlay::Rocks,
         Overlay::Hazard,
         Overlay::Thermal,
         Overlay::Radiation,
@@ -42,6 +44,7 @@ impl Overlay {
             "slope" => Overlay::Slope,
             "rough" => Overlay::Rough,
             "texture" => Overlay::Texture,
+            "rocks" => Overlay::Rocks,
             "hazard" => Overlay::Hazard,
             "thermal" => Overlay::Thermal,
             "radiation" => Overlay::Radiation,
@@ -103,9 +106,13 @@ pub fn compose(overlay: Overlay, site: &Site, grid: &CostGrid, p: &RouteParams) 
                     t => px(lerp(YELLOW, RED, (t - 0.5) * 2.0), ALPHA),
                 }
             }
-            // Relief residual: 0 m smooth .. >= ROUGH_FULL_M m blocky (same reference as the route cost).
-            Overlay::Rough => px(lerp(GREEN, RED, site.rough_m[i] / crate::route::ROUGH_FULL_M), ALPHA),
+            // Relief residual against the route's limit: green smooth .. red near the limit, purple = blocked.
+            Overlay::Rough => match site.rough_m[i] / p.rough_max_m.max(1e-3) {
+                t if t > 1.0 => px(PURPLE, ALPHA),
+                t => px(lerp(GREEN, RED, t), ALPHA),
+            },
             Overlay::Texture => px(lerp(NAVY, ORANGE, v(&site.texture)), ALPHA),
+            Overlay::Rocks => px(RED, (v(&site.rocks) * 200.0) as u8),
             Overlay::Hazard => match site.hazard[i] {
                 255 => px(BLOCKED, 220),
                 h => px(ORANGE, (h as u32 * 200 / 254) as u8),
@@ -196,7 +203,7 @@ fn recompose(
     mut vis: Query<&mut Visibility, With<OverlayMesh>>,
 ) {
     let Some(assets) = assets else { return };
-    let params_matter = matches!(*overlay, Overlay::Slope | Overlay::Cost);
+    let params_matter = matches!(*overlay, Overlay::Slope | Overlay::Rough | Overlay::Cost);
     if !overlay.is_changed() && !(params.is_changed() && params_matter) {
         return;
     }

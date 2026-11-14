@@ -6,6 +6,7 @@ export type Overlay =
   | "slope"
   | "rough"
   | "texture"
+  | "rocks"
   | "hazard"
   | "thermal"
   | "radiation"
@@ -17,7 +18,10 @@ export interface RouteParams {
   body_kg: number;
   suit_kg: number;
   payload_kg: number;
+  /** Suited-walking slope limit before the load factor (20° = NASA Artemis EVA limit). */
   s_max_base_deg: number;
+  /** Cells rougher than this (DTM relief residual, m) are impassable. */
+  rough_max_m: number;
   w_slope: number;
   w_hazard: number;
   w_thermal: number;
@@ -26,6 +30,8 @@ export interface RouteParams {
   w_rough: number;
   /** HiRISE optical texture (local contrast) weight. */
   w_texture: number;
+  /** Mapped rock cover (talus / exposed blocky bedrock, Stack et al. 2020) weight. */
+  w_rocks: number;
 }
 
 export interface LatLon {
@@ -85,7 +91,7 @@ export interface MarsSimApi {
   play_route(play: boolean): void;
   clear_route(): void;
   set_pick_target(which: PickTarget): void;
-  /** Vertical exaggeration, 1–5 (default 2). */
+  /** Vertical exaggeration, 1–5 (default 1 = true relief). */
   set_vertical_scale(v: number): void;
   set_show_traverse(show: boolean): void;
   /** Back to the map camera, framing the route (or the whole region). */
@@ -103,18 +109,21 @@ declare global {
 }
 
 // Same defaults as RouteParams::default() in sim/src/route.rs.
-// suit_kg 104: NASA Mars suit mass target (NTRS 20260005410). s_max_base_deg: team planning estimate.
+// suit_kg 104: NASA Mars suit mass target (NTRS 20260005410). s_max_base_deg 20: NASA Artemis EVA slope limit
+// (EVA-EXP-0042 Rev B). rough_max_m 0.30: suited step height NASA tested (ICES-2025-294).
 export const DEFAULT_PARAMS: RouteParams = {
   body_kg: 80,
   suit_kg: 104,
   payload_kg: 20,
   s_max_base_deg: 20,
+  rough_max_m: 0.3,
   w_slope: 3,
   w_hazard: 5,
   w_thermal: 0.5,
   w_rad: 0.5,
   w_rough: 2,
   w_texture: 1,
+  w_rocks: 3,
 };
 
 const TERRAIN_SRC = "HiRISE DTM (NASA/JPL/University of Arizona/USGS) via JPL Mars Trek";
@@ -130,8 +139,8 @@ export const OVERLAY_LEGENDS: Record<Overlay, { label: string; stops: string[]; 
   },
   rough: {
     label: "Roughness (DTM)",
-    stops: ["#2e9e5b", "#d6452f"],
-    unit: "local relief 0 → ≥1 m",
+    stops: ["#2e9e5b", "#d6452f", "#6b2a8c"],
+    unit: "local relief 0 → max roughness; purple = too rough (blocked)",
     source: TERRAIN_SRC,
   },
   texture: {
@@ -139,6 +148,12 @@ export const OVERLAY_LEGENDS: Record<Overlay, { label: string; stops: string[]; 
     stops: ["#1d2b53", "#f08a24"],
     unit: "HiRISE local contrast, relative (smooth → speckled/bouldery)",
     source: "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek",
+  },
+  rocks: {
+    label: "Rocks (mapped)",
+    stops: ["#d6452f"],
+    unit: "share of each 10 m cell mapped as talus or exposed blocky bedrock",
+    source: "NASA Mars 2020 Science Team photogeologic map (Stack et al. 2020, doi:10.1007/s11214-020-00739-x)",
   },
   hazard: {
     label: "Hazard (rocks / rough ground)",
@@ -168,7 +183,7 @@ export const OVERLAY_LEGENDS: Record<Overlay, { label: string; stops: string[]; 
     label: "Route cost",
     stops: ["#1d2b53", "#f2d43d", "#5a0f1a"],
     unit: "cost ×1 → ×6; dark red = impassable",
-    source: "Planner model (slope, roughness, texture, hazard, thermal, exposure)",
+    source: "Planner model (slope, roughness, texture, rocks, hazard, thermal, exposure)",
   },
 };
 

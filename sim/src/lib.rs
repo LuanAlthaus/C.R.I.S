@@ -1,4 +1,4 @@
-//! Jezero Marswalk Planner — Bevy sim (3D terrain, overlays, EVA route planner, rover, cameras).
+//! C.R.I.S — Bevy sim (3D terrain, overlays, EVA route planner, rover, cameras).
 //! Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 
 pub mod bridge;
@@ -23,7 +23,7 @@ pub fn build_app() -> App {
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Jezero Marswalk Planner".into(),
+                    title: "C.R.I.S".into(),
                     canvas: Some("#mars-canvas".into()),
                     fit_canvas_to_parent: true,
                     prevent_default_event_handling: false,

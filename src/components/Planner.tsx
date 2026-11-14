@@ -1,6 +1,6 @@
 "use client";
 
-// Jezero Marswalk Planner shell: planner panel beside the 3D sim on desktop (380 px + canvas), stacked
+// C.R.I.S shell: planner panel beside the 3D sim on desktop (380 px + canvas), stacked
 // under it on mobile. Holds the UI state the sim needs and replays it on ready.
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { useEffect, useState } from "react";
@@ -37,7 +37,7 @@ export default function Planner() {
   const [camera, setCamera] = useState<CameraMode>("map");
   const [overlay, setOverlay] = useState<Overlay>("none");
   const [params, setParams] = useState<RouteParams>(DEFAULT_PARAMS);
-  const [vscale, setVscale] = useState(2);
+  const [vscale, setVscale] = useState(1);
   const [showTraverse, setShowTraverse] = useState(false);
   const [target, setTarget] = useState<PickTarget>("start");
   const [start, setStart] = useState<PickEvent | null>(null);
@@ -139,7 +139,7 @@ export default function Planner() {
         <header className="flex h-14 flex-none items-center justify-between gap-3 border-b border-line pl-4 pr-2">
           <div className={`min-w-0 ${open ? "" : "lg:hidden"}`}>
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-signal">Jezero crater · EVA</p>
-            <h1 className="truncate font-display text-[1.45rem] leading-none">Jezero Marswalk Planner</h1>
+            <h1 className="truncate font-display text-[1.45rem] leading-none">C.R.I.S</h1>
           </div>
           <button
             type="button"
@@ -183,6 +183,7 @@ export default function Planner() {
             onChange={selectOverlay}
             meta={meta}
             allowedSlope={allowedSlope(params)}
+            maxRough={params.rough_max_m}
             showTraverse={showTraverse}
             onShowTraverse={changeTraverse}
             vscale={vscale}

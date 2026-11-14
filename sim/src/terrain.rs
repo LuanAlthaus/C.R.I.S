@@ -23,7 +23,6 @@ const LOAD_DIST: f32 = 1600.0;
 const DROP_DIST: f32 = 2600.0;
 const MAX_LOADING: usize = 4;
 const MAX_DETAIL: usize = 20;
-const TINT: Color = Color::srgb(1.0, 0.78, 0.62);
 
 #[derive(Component)]
 pub struct Terrain;
@@ -221,10 +220,9 @@ pub fn setup(
     mut images: ResMut<Assets<Image>>,
 ) {
     let (w, h) = site.ortho.dimensions();
-    let rgba: Vec<u8> = site.ortho.as_raw().iter().flat_map(|&g| [g, g, g, 255]).collect();
+    let rgba: Vec<u8> = site.ortho.pixels().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
     let ortho = images.add(mipmapped(w, h, rgba));
     let material = materials.add(StandardMaterial {
-        base_color: TINT,
         base_color_texture: Some(ortho),
         perceptual_roughness: 0.95,
         ..default()
@@ -406,7 +404,6 @@ fn finish_loads(
             -Vec2::new(chunk.tx as f32, chunk.ty as f32),
         );
         mat.0 = materials.add(StandardMaterial {
-            base_color: TINT,
             base_color_texture: Some(texture),
             uv_transform,
             perceptual_roughness: 0.95,

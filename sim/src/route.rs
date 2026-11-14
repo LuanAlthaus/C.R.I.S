@@ -13,9 +13,6 @@ pub const G_EARTH: f32 = 9.81;
 pub const BASE_SPEED_MPS: f32 = 1.0;
 // shortcut: planning estimate, no NASA source; replace if team finds one
 const SLOPE_SLOWDOWN: f32 = 0.6;
-/// Relief residual (m) treated as fully rough in the cost and the overlay.
-// shortcut: planning estimate, no NASA source; replace if team finds one
-pub const ROUGH_FULL_M: f32 = 1.0;
 /// Planner cell size = site grid cell.
 pub const STEP_M: f32 = CELL_M;
 const DIAG_M: f32 = STEP_M * std::f32::consts::SQRT_2;
@@ -27,8 +24,12 @@ pub struct RouteParams {
     pub body_kg: f32,
     pub suit_kg: f32,
     pub payload_kg: f32,
-    /// shortcut: planning estimate, no NASA source; replace if team finds one
+    /// 20°: NASA's suited-walking slope limit for Artemis (EVA-EXP-0042 Rev B; Artemis III site rule "< 20°").
+    /// NASA has no Mars-specific value; the load factor below can only lower it.
     pub s_max_base_deg: f32,
+    /// Cells whose relief residual (DTM roughness, m) exceeds this are impassable. 0.30 m: suited step height
+    /// NASA found acceptable (ICES-2025-294, 30.5 cm), below Perseverance's 40 cm obstacle limit.
+    pub rough_max_m: f32,
     pub w_slope: f32,
     pub w_hazard: f32,
     pub w_thermal: f32,
@@ -37,6 +38,8 @@ pub struct RouteParams {
     pub w_rough: f32,
     /// HiRISE optical texture (local contrast) weight.
     pub w_texture: f32,
+    /// Mapped rock cover (talus / exposed blocky bedrock, Stack et al. 2020) weight.
+    pub w_rocks: f32,
 }
 
 impl Default for RouteParams {
@@ -46,12 +49,14 @@ impl Default for RouteParams {
             suit_kg: 104.0,
             payload_kg: 20.0,
             s_max_base_deg: 20.0,
+            rough_max_m: 0.30,
             w_slope: 3.0,
             w_hazard: 5.0,
             w_thermal: 0.5,
             w_rad: 0.5,
             w_rough: 2.0,
             w_texture: 1.0,
+            w_rocks: 3.0,
         }
     }
 }
@@ -71,6 +76,7 @@ pub struct CostGrid {
     slope: Vec<f32>,
     rough: Vec<f32>,
     texture: Vec<u8>,
+    rocks: Vec<u8>,
     hazard: Vec<u8>,
     thermal: Vec<u8>,
     rad: Vec<u8>,
@@ -84,6 +90,7 @@ impl CostGrid {
             slope: site.slope_deg.clone(),
             rough: site.rough_m.clone(),
             texture: site.texture.clone(),
+            rocks: site.rocks.clone(),
             hazard: site.hazard.clone(),
             thermal: site.thermal.clone(),
             rad: site.radiation.clone(),
@@ -94,13 +101,14 @@ impl CostGrid {
     pub fn multiplier(&self, i: usize, p: &RouteParams) -> Option<f32> {
         let s_eff = s_max_eff(p);
         // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked.
-        if self.slope[i] >= s_eff || self.hazard[i] == 255 {
+        if self.slope[i] >= s_eff || self.rough[i] > p.rough_max_m || self.hazard[i] == 255 {
             return None;
         }
         Some(
             1.0 + p.w_slope * (self.slope[i] / s_eff).powi(2)
-                + p.w_rough * (self.rough[i] / ROUGH_FULL_M).min(1.0)
+                + p.w_rough * self.rough[i] / p.rough_max_m.max(1e-3)
                 + p.w_texture * self.texture[i] as f32 / 255.0
+                + p.w_rocks * self.rocks[i] as f32 / 255.0
                 + p.w_hazard * self.hazard[i] as f32 / 254.0
                 + p.w_thermal * self.thermal[i] as f32 / 255.0
                 + p.w_rad * self.rad[i] as f32 / 255.0,
@@ -325,6 +333,7 @@ mod tests {
             slope: vec![slope; n * n],
             rough: vec![0.0; n * n],
             texture: z.clone(),
+            rocks: z.clone(),
             hazard: z.clone(),
             thermal: z.clone(),
             rad: z,
@@ -401,11 +410,32 @@ mod tests {
     fn avoids_rough_band_when_weighted() {
         let mut g = grid(20, 0.0);
         for r in 8..=12 {
-            g.rough[r * 20 + 10] = 2.0;
+            g.rough[r * 20 + 10] = 0.25; // under the 0.30 m limit: passable, only costly
         }
         let p = RouteParams { w_rough: 10.0, ..RouteParams::default() };
         let r = plan(&g, (10, 0), (10, 19), &p).expect("path");
         assert!(r.cells.iter().all(|&(row, col)| col != 10 || !(8..=12).contains(&row)), "path {:?}", r.cells);
+    }
+
+    #[test]
+    fn detours_around_mapped_rocks() {
+        let mut g = grid(20, 0.0);
+        for r in 8..=12 {
+            g.rocks[r * 20 + 10] = 255;
+        }
+        let r = plan(&g, (10, 0), (10, 19), &RouteParams::default()).expect("path");
+        assert!(r.cells.iter().all(|&(row, col)| col != 10 || !(8..=12).contains(&row)), "path {:?}", r.cells);
+    }
+
+    #[test]
+    fn rough_wall_over_the_limit_blocks_until_the_limit_is_raised() {
+        let mut g = grid(20, 0.0);
+        for r in 0..20 {
+            g.rough[r * 20 + 10] = 0.35;
+        }
+        let p = RouteParams::default();
+        assert!(plan(&g, (0, 0), (0, 19), &p).is_none());
+        assert!(plan(&g, (0, 0), (0, 19), &RouteParams { rough_max_m: 0.4, ..p }).is_some());
     }
 
     #[test]

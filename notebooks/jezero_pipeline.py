@@ -1,8 +1,9 @@
-"""Jezero Marswalk Planner — data pipeline.
+"""C.R.I.S — Jezero data pipeline.
 
 Builds (a) the 10 m planning grids the Bevy sim embeds (sim/assets/jezero/), (b) the 1 km detail tiles the
 sim streams while the camera gets close (public/data/jezero/tiles/), and (c) small JSON files for the web app
-(public/data/jezero/). Stages: selftest, terrain, traverse, labels, hazard, radiation, thermal.
+(public/data/jezero/). Stages: selftest, terrain (runs color), color, rocks, traverse, labels, hazard, radiation,
+thermal.
 
 Run from the repo root:  python notebooks/jezero_pipeline.py <stage>
 Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
@@ -43,6 +44,13 @@ DEM_START = 172609                 # .lbl Core StartByte (1-based) - 1
 DEM_SAMPLES, DEM_UL_X, DEM_UL_Y = 21400, 4577366.0, 1106618.0   # float32 LE, 1 m/px, equirect clat 0
 TREK_TILE = "https://trek.nasa.gov/tiles/Mars/EQ/{layer}/1.0.0/default/default028mm/{z}/{row}/{col}.png"
 ORTHO_LAYER = "JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd"
+# Mars 2020 colour basemap (HiRISE RGB + CTX, NASA/JPL-Caltech/UArizona): web-mercator TMS tiles, y flipped.
+COLOR_TILE = "https://mars.nasa.gov/mmgis-maps/M20/Layers/M20_HiRISE_RGB_CTX_mosaic_25cm_v7_Merge_LERC_clip/{z}/{x}/{y}.png"
+COLOR_Z = 16                       # ~1.2 m/px at Jezero; only the chroma is used
+# Mars 2020 Science Team photogeologic map (Stack et al. 2020, SSR 216:127), electronic supplement 3.
+ROCKS_URL = ("https://static-content.springer.com/esm/art%3A10.1007%2Fs11214-020-00739-x/MediaObjects/"
+             "11214_2020_739_MOESM3_ESM.zip")
+ROCKS_SHP = "M2020_JEZ_geology_edited_equi0_allquads_v6_archive.shp"
 GEO_URL = "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Jezero_FeatureServiceFromPro/FeatureServer/8/query"
 CITATION_URL = ("https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/PGM_Map_Database_MARS_INTERACTIVE2/"
                 "FeatureServer/1/query?where=USGSMapNumber%20LIKE%20%27%253464%25%27&outFields=MapTitle,SuggestedCitation&f=json")
@@ -69,7 +77,7 @@ SLOPE_SCALE = 0.25  # deg per u8 step
 ROUGH_SCALE = 0.02  # m per u8 step
 
 _session = requests.Session()
-_session.headers["User-Agent"] = "jezero-marswalk-planner (NASA Space Apps 2026)"
+_session.headers["User-Agent"] = "cris-planner (NASA Space Apps 2026)"
 _session.mount("https://", requests.adapters.HTTPAdapter(pool_maxsize=16))
 
 
@@ -105,11 +113,11 @@ def world_xz(lat, lon, bb):
 # ---------- io helpers ----------
 
 def fetch(url, cache: Path, **kw):
-    """GET with on-disk cache; returns bytes or None on 404."""
+    """GET with on-disk cache; returns bytes or None when the server has no such object (403/404)."""
     if cache.exists():
         return cache.read_bytes()
     r = _session.get(url, timeout=120, **kw)
-    if r.status_code == 404:
+    if r.status_code in (403, 404):   # S3/CloudFront answer 403 for tiles outside a layer's footprint
         return None
     r.raise_for_status()
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -281,8 +289,8 @@ def geology(bb):
     return [{"id": i, "label": lab} for lab, i in ids.items()], citation
 
 
-def write_tiles(h2, ortho1, h_min, h_max):
-    """Detail tiles: 251x251 u16 heights (4 m spacing, shared edges) + 1024 px RGB ortho per 1 km tile."""
+def write_tiles(h2, h_min, h_max):
+    """Detail tile heights: 251x251 u16 (4 m spacing, shared edges) per 1 km tile. Orthos: cmd_color."""
     from scipy.ndimage import map_coordinates
     TILES.mkdir(parents=True, exist_ok=True)
     nv = NT * (TILE_VERTS - 1) + 1                     # 2501 global vertices per side
@@ -292,15 +300,66 @@ def write_tiles(h2, ortho1, h_min, h_max):
     hv = map_coordinates(h2, [rr, cc], order=1)
     q = np.round((hv - h_min) / (h_max - h_min) * 65535).astype(np.uint16)
     step = TILE_VERTS - 1
-    px = int(TILE_M)   # ortho1 is 1 m/px
     for ty in range(NT):
         for tx in range(NT):
             Image.fromarray(q[ty * step:ty * step + TILE_VERTS, tx * step:tx * step + TILE_VERTS]).save(
                 TILES / f"h_{ty}_{tx}.png")
-            Image.fromarray(ortho1[ty * px:(ty + 1) * px, tx * px:(tx + 1) * px]).resize(
-                (TILE_ORTHO_PX, TILE_ORTHO_PX), Image.LANCZOS).convert("RGB").save(
-                TILES / f"o_{ty}_{tx}.jpg", quality=80)
-    print(f"wrote {NT * NT} detail tiles to {TILES}")
+    print(f"wrote {NT * NT} detail tile heights to {TILES}")
+
+
+def color_ratio(bb, gray4):
+    """Chroma (RGB / grey) on the grid of gray4 from the Mars 2020 colour basemap. Outside its footprint
+    (it stops ~1.4 km short of the east edge and ~0.5 km short of the north edge) the chroma comes from a
+    grey-level lookup fitted where both images exist, feathered over ~25 cells at the seam."""
+    from scipy.ndimage import map_coordinates
+    n = 2 ** COLOR_Z
+
+    def merc_px(lat):   # global XYZ pixel row, 256 px tiles
+        r = np.radians(lat)
+        return (1 - np.log(np.tan(r) + 1 / np.cos(r)) / np.pi) / 2 * n * 256
+
+    x0, x1 = (int((bb[k] + 180) / 360 * n) for k in ("lon_min", "lon_max"))
+    y0, y1 = (int(merc_px(bb[k]) // 256) for k in ("lat_max", "lat_min"))
+    jobs = [(x, y) for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)]
+    get = lambda xy: fetch(COLOR_TILE.format(z=COLOR_Z, x=xy[0], y=n - 1 - xy[1]),
+                           RAW / f"tiles/color/{COLOR_Z}_{xy[0]}_{xy[1]}.png")
+    with ThreadPoolExecutor(12) as ex:
+        datas = list(ex.map(get, jobs))
+    mosaic = np.zeros(((y1 - y0 + 1) * 256, (x1 - x0 + 1) * 256, 4), np.uint8)
+    for (x, y), data in zip(jobs, datas):
+        if data is not None:
+            mosaic[(y - y0) * 256:(y - y0 + 1) * 256, (x - x0) * 256:(x - x0 + 1) * 256] = \
+                np.asarray(Image.open(io.BytesIO(data)).convert("RGBA"))
+    print(f"colour tiles: {sum(d is not None for d in datas)}/{len(jobs)} present")
+
+    m = gray4.shape[0]
+    t = (np.arange(m) + 0.5) / m
+    rows = merc_px(bb["lat_max"] - t * (bb["lat_max"] - bb["lat_min"])) - y0 * 256 - 0.5
+    cols = (bb["lon_min"] + t * (bb["lon_max"] - bb["lon_min"]) + 180) / 360 * n * 256 - x0 * 256 - 0.5
+    rr, cc = np.meshgrid(rows, cols, indexing="ij")
+    rgba = np.stack([map_coordinates(mosaic[..., k], [rr, cc], order=1, output=np.float32) for k in range(4)], -1)
+    del mosaic, rr, cc
+    valid = (rgba[..., 3] > 250) & (rgba[..., :3].max(-1) > 8)
+    ratio = rgba[..., :3] / np.maximum(rgba[..., :3].mean(-1), 1)[..., None]
+    del rgba
+
+    g = np.clip(np.round(gray4), 0, 255).astype(np.int32)
+    gv, rv = g[valid], ratio[valid]
+    fallback = np.median(rv, 0)
+    lut = np.array([np.median(rv[gv == v], 0) if (gv == v).sum() > 100 else fallback for v in range(256)],
+                   np.float32)
+    fill = lut[g]
+    w = box_mean(valid.astype(np.float32), 25)[..., None]
+    ratio = w * np.where(valid[..., None], ratio, fill) + (1 - w) * fill
+    print(f"colour basemap covers {valid.mean() * 100:.1f}% of the region")
+    return ratio.astype(np.float32)
+
+
+def colorize(gray, ratio):
+    """Grey HiRISE pixels times the chroma ratio resampled to the same size -> RGB uint8."""
+    h, w = gray.shape
+    r = np.stack([resize_f(ratio[..., k], (w, h), Image.BILINEAR) for k in range(3)], -1)
+    return Image.fromarray(np.clip(gray[..., None] * r, 0, 255).astype(np.uint8), "RGB")
 
 
 def cmd_terrain(_):
@@ -339,17 +398,16 @@ def cmd_terrain(_):
     ortho1 = np.asarray(ortho.resize((int(SIZE_M), int(SIZE_M)), Image.BILINEAR))   # 1 m/px
     del ortho
     Image.fromarray(ortho1).save(PROC / "ortho_1m.png")
-    Image.fromarray(ortho1).resize((2048, 2048), Image.LANCZOS).save(ASSETS / "ortho.jpg", quality=85)
     # Optical texture: local contrast (std of the 1 m HiRISE pixels in each 10 m cell); bouldery/rough
     # surfaces are speckled, smooth sand/regolith is uniform. Relative, scaled to the region's p99.
     tex = blocks(ortho1.astype(np.float32), int(CELL_M)).std(-1)
     tex_scale = float(np.percentile(tex, 99)) / 255
     save_u8("texture.png", tex / tex_scale)
 
-    write_tiles(h2, ortho1, h_min, h_max)
+    write_tiles(h2, h_min, h_max)
     units, citation = geology(bb)
 
-    for name in ("hazard.png", "thermal.png", "radiation.png"):
+    for name in ("hazard.png", "thermal.png", "radiation.png", "rocks.png"):
         p = ASSETS / name
         if not p.exists() or Image.open(p).size != (GRID, GRID):
             save_u8(name, np.zeros((GRID, GRID)))
@@ -370,12 +428,71 @@ def cmd_terrain(_):
             "credits": [c for c in old.get("credits", [])
                         if c["layer"] not in ("elevation", "ortho", "geology", "roughness", "texture")]}
     set_credit(meta, "elevation", "HiRISE DTM mosaic (NASA/JPL/University of Arizona/USGS) via JPL Mars Trek")
-    set_credit(meta, "ortho", "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek")
     set_credit(meta, "roughness", "Derived from HiRISE DTM: local relief residual (2 m), p90 per 10 m cell")
     set_credit(meta, "texture", "Derived from HiRISE orthomosaic: local brightness contrast per 10 m cell (relative)")
     set_credit(meta, "geology", citation)
     save_meta(meta)
     print(f"geology units: {len(units)}; wrote {ASSETS} and {WEB / 'meta.json'}")
+    cmd_color(None)
+
+
+def cmd_color(_):
+    """Coloured orthos: grey HiRISE (Trek, ~0.6 m/px source) for detail, chroma from the Mars 2020 colour basemap.
+    Writes the region ortho (sim/assets) and the 1 km detail tile orthos."""
+    bb = bbox()
+    ortho1 = np.asarray(Image.open(PROC / "ortho_1m.png").convert("L"))
+    gray4 = np.asarray(Image.fromarray(ortho1).resize((2500, 2500), Image.BOX), dtype=np.float32)
+    ratio = color_ratio(bb, gray4)
+    colorize(np.asarray(Image.fromarray(ortho1).resize((2048, 2048), Image.LANCZOS)), ratio).save(
+        ASSETS / "ortho.jpg", quality=85)
+    TILES.mkdir(parents=True, exist_ok=True)
+    px, rk = int(TILE_M), ratio.shape[0] // NT   # ortho1 is 1 m/px
+    for ty in range(NT):
+        for tx in range(NT):
+            colorize(ortho1[ty * px:(ty + 1) * px, tx * px:(tx + 1) * px],
+                     ratio[ty * rk:(ty + 1) * rk, tx * rk:(tx + 1) * rk]).resize(
+                (TILE_ORTHO_PX, TILE_ORTHO_PX), Image.LANCZOS).save(TILES / f"o_{ty}_{tx}.jpg", quality=80)
+    meta = load_meta()
+    set_credit(meta, "ortho", "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek; colour from the "
+                              "Mars 2020 HiRISE RGB + CTX basemap (NASA/JPL-Caltech/University of Arizona) via "
+                              "Mars 2020 MMGIS, extended by grey-level matching outside its footprint")
+    save_meta(meta)
+    print(f"wrote coloured ortho.jpg and {NT * NT} tile orthos")
+
+
+def cmd_rocks(_):
+    """Rock-covered ground from the Mars 2020 Science Team photogeologic map (Stack et al. 2020): polygons
+    mapped as talus or as blocky bedrock. rocks.png = fraction of each 10 m cell (0..255)."""
+    import zipfile
+    import geopandas as gpd
+    from rasterio.features import rasterize
+    from rasterio.transform import from_bounds
+    bb = bbox()
+    zpath = RAW / "stack2020_photogeologic_map.zip"
+    if fetch(ROCKS_URL, zpath) is None:
+        sys.exit("photogeologic map download failed")
+    shp_dir = RAW / "stack2020"
+    if not (shp_dir / ROCKS_SHP).exists():
+        zipfile.ZipFile(zpath).extractall(shp_dir)
+    g = gpd.read_file(shp_dir / ROCKS_SHP)
+    g = g[g.geometry.notna()]
+    # The surface unit is what you walk on: blocky bedrock counts only where the map shows no or minor cover.
+    exposed = g.SurfUName.isna() | g.SurfUName.eq("Minor Cover Us")
+    rocky = g[g.SurfUName.eq("Talus") | (exposed & g.BedrkUName.str.contains("blocky", case=False, na=False))]
+    # The shapefile is Mars2000 equidistant cylindrical, clon 0, sphere: x = lon * M_PER_DEG, y = lat * M_PER_DEG.
+    tf = from_bounds(bb["lon_min"] * M_PER_DEG, bb["lat_min"] * M_PER_DEG,
+                     bb["lon_max"] * M_PER_DEG, bb["lat_max"] * M_PER_DEG, FN, FN)
+    fine = rasterize(((geom, 1) for geom in rocky.geometry), out_shape=(FN, FN), transform=tf, dtype="uint8")
+    frac = blocks(fine.astype(np.float32), int(CELL_M / FINE_M)).mean(-1)
+    save_u8("rocks.png", frac * 255)
+    units = sorted({f"{s} / {b}" for s, b in zip(rocky.SurfUName.fillna("—"), rocky.BedrkUName.fillna("—"))})
+    print(f"rocky units (surface / bedrock): {units}")
+    print(f"rock-covered: {(frac > 0).mean() * 100:.1f}% of cells touched, {frac.mean() * 100:.1f}% of the area")
+    meta = load_meta()
+    set_credit(meta, "rocks", "NASA Mars 2020 Science Team photogeologic map on HiRISE (Stack et al. 2020, Space Sci. "
+                              "Rev. 216:127, doi:10.1007/s11214-020-00739-x): talus and exposed blocky-bedrock units, "
+                              "area fraction per 10 m cell")
+    save_meta(meta)
 
 
 def cmd_traverse(_):
@@ -662,7 +779,7 @@ def cmd_thermal(_):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("selftest", "terrain", "traverse", "labels", "hazard", "radiation", "thermal"):
+    for name in ("selftest", "terrain", "color", "rocks", "traverse", "labels", "hazard", "radiation", "thermal"):
         sub.add_parser(name).set_defaults(fn=globals()[f"cmd_{name}"])
     args = ap.parse_args()
     args.fn(args)

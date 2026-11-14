@@ -87,10 +87,6 @@
    "text": "HiRISE DTM mosaic (NASA/JPL/University of Arizona/USGS) via JPL Mars Trek"
   },
   {
-   "layer": "ortho",
-   "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek"
-  },
-  {
    "layer": "roughness",
    "text": "Derived from HiRISE DTM: local relief residual (2 m), p90 per 10 m cell"
   },
@@ -101,6 +97,14 @@
   {
    "layer": "geology",
    "text": "Sun, V.Z., and Stack, K.M., 2020, Geologic map of Jezero crater and the Nili Planum region, Mars: U.S. Geological Survey Scientific Investigations Map 3464, pamphlet 14 p., 1 sheet, scale 1:75,000, https://doi.org/10.3133/sim3464."
+  },
+  {
+   "layer": "ortho",
+   "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek; colour from the Mars 2020 HiRISE RGB + CTX basemap (NASA/JPL-Caltech/University of Arizona) via Mars 2020 MMGIS, extended by grey-level matching outside its footprint"
+  },
+  {
+   "layer": "rocks",
+   "text": "NASA Mars 2020 Science Team photogeologic map on HiRISE (Stack et al. 2020, Space Sci. Rev. 216:127, doi:10.1007/s11214-020-00739-x): talus and exposed blocky-bedrock units, area fraction per 10 m cell"
   }
  ]
 }

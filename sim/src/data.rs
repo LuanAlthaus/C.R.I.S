@@ -63,12 +63,14 @@ pub struct Site {
     pub rough_m: Vec<f32>,
     /// HiRISE optical local contrast, relative 0..255.
     pub texture: Vec<u8>,
+    /// Rock-covered fraction (talus / exposed blocky bedrock, Stack et al. 2020), 0..255.
+    pub rocks: Vec<u8>,
     pub hazard: Vec<u8>,
     pub thermal: Vec<u8>,
     pub radiation: Vec<u8>,
     pub geology: Vec<u8>,
-    /// Region-wide ortho (2048², ~5 m/px) for far terrain.
-    pub ortho: image::GrayImage,
+    /// Region-wide colour ortho (2048², ~5 m/px) for far terrain.
+    pub ortho: image::RgbImage,
     /// Perseverance waypoints inside the region, in drive order.
     pub traverse: Vec<Waypoint>,
 }
@@ -95,13 +97,14 @@ impl Site {
             slope_deg: scaled(include_bytes!("../assets/jezero/slope.png"), meta.slope_scale_deg),
             rough_m: scaled(include_bytes!("../assets/jezero/rough.png"), meta.rough_scale_m),
             texture: luma8(include_bytes!("../assets/jezero/texture.png")),
+            rocks: luma8(include_bytes!("../assets/jezero/rocks.png")),
             hazard: luma8(include_bytes!("../assets/jezero/hazard.png")),
             thermal: luma8(include_bytes!("../assets/jezero/thermal.png")),
             radiation: luma8(include_bytes!("../assets/jezero/radiation.png")),
             geology: luma8(include_bytes!("../assets/jezero/geology.png")),
             ortho: image::load_from_memory(include_bytes!("../assets/jezero/ortho.jpg"))
                 .expect("ortho.jpg decodes")
-                .into_luma8(),
+                .into_rgb8(),
             traverse: traverse.points,
             meta,
         }
@@ -152,7 +155,7 @@ pub struct VScale(pub f32);
 
 impl Default for VScale {
     fn default() -> Self {
-        VScale(2.0)
+        VScale(1.0)
     }
 }
 

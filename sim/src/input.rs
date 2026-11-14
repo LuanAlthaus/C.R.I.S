@@ -16,7 +16,7 @@ impl Plugin for InputPlugin {
 }
 
 fn keys(input: Res<ButtonInput<KeyCode>>, playback: Res<RoverPlayback>) {
-    const DIGITS: [KeyCode; 9] = [
+    const DIGITS: [KeyCode; 10] = [
         KeyCode::Digit1,
         KeyCode::Digit2,
         KeyCode::Digit3,
@@ -26,6 +26,7 @@ fn keys(input: Res<ButtonInput<KeyCode>>, playback: Res<RoverPlayback>) {
         KeyCode::Digit7,
         KeyCode::Digit8,
         KeyCode::Digit9,
+        KeyCode::Digit0,
     ];
     for (key, overlay) in DIGITS.iter().zip(Overlay::ALL) {
         if input.just_pressed(*key) {

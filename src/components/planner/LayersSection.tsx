@@ -4,10 +4,10 @@
 import { OVERLAY_LEGENDS, type Overlay } from "@/lib/marsSim";
 import { citeCls, labelCls, Section, type SiteMeta } from "./ui";
 
-const ORDER: Overlay[] = ["none", "slope", "rough", "texture", "hazard", "thermal", "radiation", "geology", "cost"];
+const ORDER: Overlay[] = ["none", "slope", "rough", "texture", "rocks", "hazard", "thermal", "radiation", "geology", "cost"];
 const META_KEY = { hazard: "hazard_model", radiation: "radiation", thermal: "thermal" } as const;
 // For these overlays the last legend stop is a separate class (too steep / impassable), not part of the ramp.
-const SPLIT_LAST: Overlay[] = ["slope", "hazard", "cost"];
+const SPLIT_LAST: Overlay[] = ["slope", "rough", "hazard", "cost"];
 
 function ramp(o: Overlay) {
   const stops = OVERLAY_LEGENDS[o].stops;
@@ -17,14 +17,16 @@ function ramp(o: Overlay) {
   return `linear-gradient(90deg, ${(g.length === 1 ? [`${g[0]}00`, g[0]] : g).join(", ")})`;
 }
 
-function rampLabels(o: Overlay, allowed: number): string[] {
+function rampLabels(o: Overlay, allowed: number, maxRough: number): string[] {
   switch (o) {
     case "slope":
       return ["0°", `${(allowed / 2).toFixed(1)}°`, `${allowed.toFixed(1)}°`];
     case "rough":
-      return ["0 m", "≥1 m"];
+      return ["0 m", `${maxRough.toFixed(2)} m`];
     case "texture":
       return ["Smooth", "Speckled"];
+    case "rocks":
+      return ["None", "All rock"];
     case "hazard":
       return ["Smooth", "Rough"];
     case "thermal":
@@ -38,8 +40,9 @@ function rampLabels(o: Overlay, allowed: number): string[] {
   }
 }
 
-const EXTRA_CLASS: Partial<Record<Overlay, (allowed: number) => string>> = {
+const EXTRA_CLASS: Partial<Record<Overlay, (allowed: number, maxRough: number) => string>> = {
   slope: (a) => `Too steep (> ${a.toFixed(1)}°)`,
+  rough: (_, r) => `Too rough (> ${r.toFixed(2)} m)`,
   hazard: () => "Impassable",
   cost: () => "Impassable",
 };
@@ -52,6 +55,7 @@ export default function LayersSection({
   onChange,
   meta,
   allowedSlope,
+  maxRough,
   showTraverse,
   onShowTraverse,
   vscale,
@@ -61,6 +65,7 @@ export default function LayersSection({
   onChange: (o: Overlay) => void;
   meta: SiteMeta | null;
   allowedSlope: number;
+  maxRough: number;
   showTraverse: boolean;
   onShowTraverse: (v: boolean) => void;
   vscale: number;
@@ -71,7 +76,7 @@ export default function LayersSection({
     return !!(key && meta?.[key].type === "none");
   };
   const legend = OVERLAY_LEGENDS[overlay];
-  const labels = rampLabels(overlay, allowedSlope);
+  const labels = rampLabels(overlay, allowedSlope, maxRough);
   const extra = EXTRA_CLASS[overlay];
 
   return (
@@ -110,7 +115,9 @@ export default function LayersSection({
 
       <div aria-live="polite" className="space-y-2.5">
         {overlay === "none" ? (
-          <p className="text-sm text-muted">HiRISE orthophoto draped on the terrain, no data overlay.</p>
+          <p className="text-sm text-muted">
+            HiRISE orthophoto in Mars 2020 basemap colour, draped on the HiRISE terrain; no data overlay.
+          </p>
         ) : pending(overlay) ? (
           <p className="rounded-md border border-dashed border-line px-3 py-2 text-sm text-muted">
             {legend.label}: not computed yet. The layer is transparent until the team runs this pipeline stage.
@@ -139,7 +146,7 @@ export default function LayersSection({
                   className="size-3 flex-none rounded-sm"
                   style={{ background: legend.stops[legend.stops.length - 1] }}
                 />
-                {extra(allowedSlope)}
+                {extra(allowedSlope, maxRough)}
               </p>
             )}
           </div>

@@ -13,12 +13,14 @@ const LOAD_FIELDS: Field[] = [
   { key: "suit_kg", label: "Suit", unit: "kg", min: 0, max: 200, step: 1 },
   { key: "payload_kg", label: "Payload", unit: "kg", min: 0, max: 500, step: 1 },
   { key: "s_max_base_deg", label: "Max slope", unit: "°", min: 1, max: 45, step: 0.5 },
+  { key: "rough_max_m", label: "Max roughness", unit: "m", min: 0.05, max: 2, step: 0.05 },
 ];
 
 const AVOID: { key: keyof RouteParams; label: string; hint: string }[] = [
   { key: "w_slope", label: "Steep slopes", hint: "HiRISE DTM slope, relative to the allowed max" },
   { key: "w_rough", label: "Rough terrain (DTM)", hint: "Local relief bumps in the elevation model" },
   { key: "w_texture", label: "Rocky texture (optical)", hint: "Speckled, bouldery look in the HiRISE photo" },
+  { key: "w_rocks", label: "Mapped rocks", hint: "Talus and exposed blocky bedrock (Mars 2020 photogeologic map)" },
   { key: "w_hazard", label: "Hazard labels", hint: "Team-labelled rough / impassable patches" },
   { key: "w_thermal", label: "Thermal swing", hint: "THEMIS relative day–night swing" },
   { key: "w_rad", label: "Sky exposure", hint: "Open sky = less terrain shielding from radiation" },
@@ -116,8 +118,9 @@ export default function LimitsSection({
       <div className={`${citeCls} space-y-1`}>
         <p>Suit: 104 kg = NASA Mars suit mass target (NTRS 20260005410).</p>
         <p>
-          Max slope and walking speed (1.0 m/s on flat ground) are team planning estimates, not NASA values. Mars
-          gravity 3.71 m/s².
+          Max slope 20° = NASA suited-walking limit for Artemis (EVA-EXP-0042 Rev B); NASA has no Mars value yet.
+          Max roughness 0.30 m = suited step height NASA tested (ICES-2025-294), under Perseverance&apos;s 40 cm
+          obstacle limit. Walking speed (1.0 m/s on flat ground) is a team estimate. Mars gravity 3.71 m/s².
         </p>
       </div>
     </Section>
