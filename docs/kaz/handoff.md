@@ -45,8 +45,9 @@ Actualizado: 2026-11-14 16:30 -03. Se actualiza cada hora. Al abrir una sesión 
 
 ## Siguiente
 1. Hecho 16:35: wasm nuevo (27 MB) verificado con `/tmp/mw3_check.py`. Resultados: 60 fps, título y `<h1>` = C.R.I.S, ruta ok (2009 m, pendiente máx. 12,5°), capas Rocks/Roughness se ven, mapa/dron/rover ok y sin errores de consola. `pnpm lint` y `pnpm build` OK.
-2. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
-3. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
+2. Push bloqueado (16:40): commit `1c8e5eb` (docs/CRIS.md) en la rama local `kaz`, 3 commits sin publicar. `git push git@github.com:LuanAlthaus/C.R.I.S.git kaz:kaz` → "Permission to LuanAlthaus/C.R.I.S.git denied to kaz-py". LuanAlthaus tiene que dar acceso de escritura a `kaz-py` y después se repite ese comando.
+3. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
+4. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
 
 ## Pendiente del equipo (humano)
 - Etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`; luego `python notebooks/jezero_pipeline.py hazard` y reconstruir el wasm. No etiquetar con IA (regla del evento). Sin esto `hazard.png` está vacío y las rocas no entran en el costo.
