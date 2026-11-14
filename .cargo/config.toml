@@ -1,0 +1,4 @@
+# Rust build output lives outside the repo (~19 GB, hundreds of thousands of files): inside it, the
+# Next.js dev server's file watcher ran out of memory (OOM-killed at ~13 GB). Path is relative to this repo.
+[build]
+target-dir = "../mars_sim_target"

@@ -60,3 +60,6 @@ supabase/.branches/
 
 # material privado del equipo (guiones, videos): no va a GitHub
 /local/
+
+# Bevy sim build output
+/sim/target/

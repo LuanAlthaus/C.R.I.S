@@ -7,9 +7,9 @@ const mono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], w
 const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
-  title: "Space Apps 2026 Starter",
+  title: "Jezero Marswalk Planner",
   description:
-    "Unofficial starter template for the NASA Space Apps Challenge 2026: Next.js + Supabase on free tiers, agent skills and challenge resources.",
+    "Plan a safe spacesuit walk across 10 × 10 km of Jezero crater, Mars: 3D HiRISE terrain, slope, roughness, optical texture, hazard, thermal and sky-exposure layers, a load-aware route planner and EVA conditions from NASA data.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

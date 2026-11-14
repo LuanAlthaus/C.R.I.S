@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python venv, Rust build output, data caches and the generated wasm-bindgen glue.
+    ".venv/**",
+    "sim/target/**",
+    "data/**",
+    "public/sim/mars_sim.js",
   ]),
 ]);
 

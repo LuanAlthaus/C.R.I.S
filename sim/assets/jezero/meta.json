@@ -1,0 +1,106 @@
+{
+ "site": "Jezero crater — Octavia E. Butler landing site and surroundings",
+ "center": {
+  "lat": 18.4447,
+  "lon": 77.4508
+ },
+ "bbox": {
+  "lat_min": 18.360346975709426,
+  "lat_max": 18.529053024290576,
+  "lon_min": 77.36187905946238,
+  "lon_max": 77.53972094053762
+ },
+ "size_m": 10000.0,
+ "grid": {
+  "w": 1000,
+  "h": 1000,
+  "cell_m": 10.0
+ },
+ "tiles": {
+  "n": 10,
+  "size_m": 1000.0,
+  "verts": 251,
+  "ortho_px": 1024,
+  "path": "tiles"
+ },
+ "h_min": -2652.11865234375,
+ "h_max": -2392.3330078125,
+ "slope_scale_deg": 0.25,
+ "rough_scale_m": 0.02,
+ "texture": {
+  "type": "HiRISE local contrast",
+  "scale": 0.14679010428634345
+ },
+ "geology_units": [
+  {
+   "id": 1,
+   "label": "Aeb — Eolian bedform unit"
+  },
+  {
+   "id": 2,
+   "label": "NHjf2 — Jezero fan 2 unit"
+  },
+  {
+   "id": 3,
+   "label": "Njf — Jezero floor unit"
+  },
+  {
+   "id": 4,
+   "label": "Nle — Lower etched unit"
+  },
+  {
+   "id": 5,
+   "label": "Nue — Upper etched unit"
+  },
+  {
+   "id": 6,
+   "label": "cr — Crater rim unit"
+  }
+ ],
+ "hazard_model": {
+  "type": "none"
+ },
+ "radiation": {
+  "type": "sky-view factor",
+  "min": 0.630363439412181,
+  "max": 1.0
+ },
+ "thermal": {
+  "type": "THEMIS day-night relative swing",
+  "uniform": false
+ },
+ "credits": [
+  {
+   "layer": "traverse",
+   "text": "Perseverance rover waypoints (NASA/JPL-Caltech) via mars.nasa.gov"
+  },
+  {
+   "layer": "radiation",
+   "text": "Derived from HiRISE DTM; relative GCR/SPE exposure proxy, not a dose"
+  },
+  {
+   "layer": "thermal",
+   "text": "THEMIS day/night IR controlled mosaics 100 m (NASA/JPL/ASU) via JPL Mars Trek; relative day-night swing index, not a temperature"
+  },
+  {
+   "layer": "elevation",
+   "text": "HiRISE DTM mosaic (NASA/JPL/University of Arizona/USGS) via JPL Mars Trek"
+  },
+  {
+   "layer": "ortho",
+   "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek"
+  },
+  {
+   "layer": "roughness",
+   "text": "Derived from HiRISE DTM: local relief residual (2 m), p90 per 10 m cell"
+  },
+  {
+   "layer": "texture",
+   "text": "Derived from HiRISE orthomosaic: local brightness contrast per 10 m cell (relative)"
+  },
+  {
+   "layer": "geology",
+   "text": "Sun, V.Z., and Stack, K.M., 2020, Geologic map of Jezero crater and the Nili Planum region, Mars: U.S. Geological Survey Scientific Investigations Map 3464, pamphlet 14 p., 1 sheet, scale 1:75,000, https://doi.org/10.3133/sim3464."
+  }
+ ]
+}

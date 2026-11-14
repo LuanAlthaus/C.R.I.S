@@ -63,6 +63,14 @@ Skills de Vercel Labs ([vercel-labs/agent-skills](https://github.com/vercel-labs
 2. Crea `docs/PROJECT.md` con el encuadre (skill `data-biz`).
 3. Despliega temprano y despliega seguido.
 
+## Project: Jezero Marswalk Planner — credits
+A 3D EVA route planner for a 10 × 10 km area of Jezero crater around the Octavia E. Butler landing site (Bevy → WASM inside this Next.js app). Terrain streams 1 km HiRISE detail tiles (`public/data/jezero/tiles/`) as the camera gets close. Rebuild the data with `python notebooks/jezero_pipeline.py <stage>` and the sim with `bash scripts/build-sim.sh`.
+
+- **AI-generated code (SI):** the data pipeline (`notebooks/jezero_pipeline.py`), the Bevy sim (`sim/`), the web bridge and route handlers (`src/lib/marsSim.ts`, `src/components/MarsSim.tsx`, `src/app/api/nasa/donki-mars/`, `src/app/api/nasa/raw-images/`), `scripts/build-sim.sh` and the UI were written with AI assistance (Claude via omp) from the team's own plan. Details: `docs/SI_USAGE.md`.
+- **Human-made data:** hazard training labels in `notebooks/labels/jezero_patches.csv`.
+- **3D model:** Perseverance rover, NASA/JPL-Caltech (NASA 3D Resources, `25042_Perseverance.glb`), served as `public/data/jezero/rover.glb` with the NASA/JPL logos, US flag and Mars 2020 insignia painted out of its textures (Space Apps rule: no NASA marks).
+- **Data sources:** HiRISE DTM and orthomosaic (NASA/JPL/University of Arizona/USGS) via JPL Mars Trek, plus layers derived from them (slope, DTM roughness, optical texture, sky-view factor); USGS SIM 3464 geologic map (Sun & Stack, 2020); THEMIS day/night IR mosaics (NASA/JPL/ASU) via Mars Trek; Perseverance rover waypoints (NASA/JPL-Caltech) via mars.nasa.gov (https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json); NASA InSight weather via api.nasa.gov; DONKI WSA-Enlil (NASA CCMC) via api.nasa.gov; MODIS Terra/Aqua LST via NASA GIBS/Worldview; Perseverance raw images (NASA/JPL-Caltech); limits from NASA-STD-3001. Data: NASA. Not endorsed by NASA.
+
 ## Licencia
 [MIT](LICENSE). Las skills de terceros conservan sus licencias (`.claude/skills/_licenses/` y el `LICENSE.txt` de cada skill de Anthropic).
 Proyecto comunitario, **no afiliado a NASA ni respaldado por NASA**.

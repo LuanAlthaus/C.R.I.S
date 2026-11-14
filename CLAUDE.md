@@ -1,5 +1,7 @@
 @AGENTS.md
 
+**Handoff en curso:** al empezar o retomar una sesión, lee `docs/kaz/handoff.md` y continúa desde "Siguiente". Actualízalo cada hora.
+
 # Notas específicas para Claude Code
 
 - Las instrucciones compartidas con todos los agentes (Claude Code, OpenCode y otros) están en `AGENTS.md` (importado arriba). OpenCode no lee este archivo: lo que deba valer para ambos va en `AGENTS.md`. Las **reglas del evento** de esa sección son obligatorias, en especial: **no idear la solución del challenge** y llevar el registro de uso de SI en `docs/SI_USAGE.md`.

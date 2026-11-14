@@ -1,0 +1,246 @@
+{
+ "mars": {
+  "source": "NASA InSight APSS/TWINS via api.nasa.gov (Elysium Planitia, 2020)",
+  "sols": [
+   {
+    "sol": 675,
+    "min_c": -96.872,
+    "max_c": -15.908,
+    "swing_c": 80.964,
+    "pressure_pa": 750.563,
+    "wind_ms": 7.233,
+    "first_utc": "2020-10-19T18:32:20Z"
+   },
+   {
+    "sol": 676,
+    "min_c": -96.912,
+    "max_c": -16.499,
+    "swing_c": 80.413,
+    "pressure_pa": 749.09,
+    "wind_ms": 8.526,
+    "first_utc": "2020-10-20T19:11:55Z"
+   },
+   {
+    "sol": 677,
+    "min_c": -97.249,
+    "max_c": -16.853,
+    "swing_c": 80.396,
+    "pressure_pa": 748.698,
+    "wind_ms": 7.887,
+    "first_utc": "2020-10-21T19:51:31Z"
+   },
+   {
+    "sol": 678,
+    "min_c": -97.728,
+    "max_c": -9.055,
+    "swing_c": 88.673,
+    "pressure_pa": 743.741,
+    "wind_ms": 5.246,
+    "first_utc": "2020-10-22T20:31:06Z"
+   },
+   {
+    "sol": 679,
+    "min_c": -96.644,
+    "max_c": -11.561,
+    "swing_c": 85.083,
+    "pressure_pa": 744.529,
+    "wind_ms": 5.565,
+    "first_utc": "2020-10-23T21:10:41Z"
+   },
+   {
+    "sol": 680,
+    "min_c": -96.811,
+    "max_c": -15.298,
+    "swing_c": 81.513,
+    "pressure_pa": 743.99,
+    "wind_ms": 6.517,
+    "first_utc": "2020-10-24T21:50:16Z"
+   },
+   {
+    "sol": 681,
+    "min_c": -95.447,
+    "max_c": -4.444,
+    "swing_c": 91.003,
+    "pressure_pa": 743.55,
+    "wind_ms": 5.632,
+    "first_utc": "2020-10-25T22:29:51Z"
+   }
+  ],
+  "mean_swing_c": 84.01,
+  "max_swing_c": 91.0,
+  "mean_pressure_pa": 746.31
+ },
+ "earth": {
+  "source": "MODIS Terra/Aqua LST via NASA GIBS/Worldview",
+  "name": "Atacama Desert",
+  "lat": -24.5,
+  "lon": -69.25,
+  "days": [
+   {
+    "date": "2024-01-01",
+    "day_c": 39.95,
+    "night_c": 12.95,
+    "swing_c": 27.0
+   },
+   {
+    "date": "2024-01-03",
+    "day_c": 38.75,
+    "night_c": 12.35,
+    "swing_c": 26.4
+   },
+   {
+    "date": "2024-01-04",
+    "day_c": 40.55,
+    "night_c": 10.55,
+    "swing_c": 30.0
+   },
+   {
+    "date": "2024-01-05",
+    "day_c": 43.55,
+    "night_c": 11.75,
+    "swing_c": 31.8
+   },
+   {
+    "date": "2024-01-06",
+    "day_c": 40.55,
+    "night_c": 11.75,
+    "swing_c": 28.8
+   },
+   {
+    "date": "2024-01-07",
+    "day_c": 44.15,
+    "night_c": 11.75,
+    "swing_c": 32.4
+   },
+   {
+    "date": "2024-01-08",
+    "day_c": 41.75,
+    "night_c": 13.55,
+    "swing_c": 28.2
+   },
+   {
+    "date": "2024-01-09",
+    "day_c": 42.35,
+    "night_c": 11.75,
+    "swing_c": 30.6
+   },
+   {
+    "date": "2024-01-10",
+    "day_c": 47.75,
+    "night_c": 13.55,
+    "swing_c": 34.2
+   },
+   {
+    "date": "2024-01-11",
+    "day_c": 40.55,
+    "night_c": 12.95,
+    "swing_c": 27.6
+   },
+   {
+    "date": "2024-01-12",
+    "day_c": 42.95,
+    "night_c": 13.55,
+    "swing_c": 29.4
+   },
+   {
+    "date": "2024-01-13",
+    "day_c": 38.15,
+    "night_c": 12.95,
+    "swing_c": 25.2
+   },
+   {
+    "date": "2024-01-14",
+    "day_c": 44.15,
+    "night_c": 11.15,
+    "swing_c": 33.0
+   },
+   {
+    "date": "2024-01-15",
+    "day_c": 39.35,
+    "night_c": 13.55,
+    "swing_c": 25.8
+   },
+   {
+    "date": "2024-01-16",
+    "day_c": 41.75,
+    "night_c": 12.95,
+    "swing_c": 28.8
+   },
+   {
+    "date": "2024-01-17",
+    "day_c": 42.95,
+    "night_c": 14.15,
+    "swing_c": 28.8
+   },
+   {
+    "date": "2024-01-19",
+    "day_c": 42.95,
+    "night_c": 15.95,
+    "swing_c": 27.0
+   },
+   {
+    "date": "2024-01-20",
+    "day_c": 36.95,
+    "night_c": 14.75,
+    "swing_c": 22.2
+   },
+   {
+    "date": "2024-01-21",
+    "day_c": 40.55,
+    "night_c": 14.15,
+    "swing_c": 26.4
+   },
+   {
+    "date": "2024-01-22",
+    "day_c": 45.95,
+    "night_c": 15.35,
+    "swing_c": 30.6
+   },
+   {
+    "date": "2024-01-23",
+    "day_c": 39.95,
+    "night_c": 14.15,
+    "swing_c": 25.8
+   },
+   {
+    "date": "2024-01-24",
+    "day_c": 42.95,
+    "night_c": 14.75,
+    "swing_c": 28.2
+   },
+   {
+    "date": "2024-01-25",
+    "day_c": 38.15,
+    "night_c": 15.35,
+    "swing_c": 22.8
+   },
+   {
+    "date": "2024-01-26",
+    "day_c": 39.35,
+    "night_c": 13.55,
+    "swing_c": 25.8
+   },
+   {
+    "date": "2024-01-28",
+    "day_c": 38.15,
+    "night_c": 14.15,
+    "swing_c": 24.0
+   },
+   {
+    "date": "2024-01-29",
+    "day_c": 42.95,
+    "night_c": 14.75,
+    "swing_c": 28.2
+   },
+   {
+    "date": "2024-01-30",
+    "day_c": 37.55,
+    "night_c": 14.15,
+    "swing_c": 23.4
+   }
+  ],
+  "mean_swing_c": 27.87
+ },
+ "earth_pressure_pa": 101325,
+ "generated_at": "2026-11-14T17:33:55+00:00"
+}

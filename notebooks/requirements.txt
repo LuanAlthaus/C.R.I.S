@@ -7,6 +7,8 @@ python-dotenv
 duckdb
 matplotlib
 supabase
+pillow
+scikit-learn
 
 # Datos de la Tierra (Earthdata, rasters, vectores)
 earthaccess
