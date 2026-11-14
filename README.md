@@ -33,7 +33,6 @@ Deploy paso a paso: **[docs/deploy/vercel-supabase.md](docs/deploy/vercel-supaba
 | [`docs/resources/ofertas-y-free-tiers.md`](docs/resources/ofertas-y-free-tiers.md) | Global Offers 2026 y límites de Vercel, Supabase, Cloudflare, Gemini, Groq, HF, Render… |
 | [`docs/deploy/vercel-supabase.md`](docs/deploy/vercel-supabase.md) | Guía de despliegue gratis |
 | [`docs/SI_USAGE.md`](docs/SI_USAGE.md) | Registro de uso de IA para el formulario de entrega |
-| [`docs/pitch/guion-video-y-caso-de-uso.md`](docs/pitch/guion-video-y-caso-de-uso.md) | Plantillas de guion de 30 s y de caso de uso, y presentación del template |
 | [`.claude/skills/`](.claude/skills) | Skills (también en `.agents/skills`, que es un symlink) |
 | `src/` | App Next.js (`app/api/*`: health, nasa/apod, notes, cron/keepalive) |
 | `supabase/migrations/` | Esquema SQL con RLS |

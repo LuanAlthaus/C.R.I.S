@@ -57,3 +57,6 @@ __pycache__/
 # supabase local
 supabase/.temp/
 supabase/.branches/
+
+# material privado del equipo (guiones, videos): no va a GitHub
+/local/
