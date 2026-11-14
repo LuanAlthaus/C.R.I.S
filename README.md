@@ -4,7 +4,7 @@ Template **no oficial** y gratuito para equipos del [NASA Space Apps Challenge 2
 
 Incluye:
 - **App base** Next.js 16 + Supabase lista para desplegar en Vercel (**US$ 0**), con ejemplos de proxy a APIs de NASA, lectura y escritura en la base con RLS, y un cron que evita que el demo se apague antes de que termine la evaluación.
-- **Skills para agentes de código** (Claude Code, Codex, Cursor…): las propias del repo (datos de NASA, geoespacial, planetario, data-biz, mapas, IA, juegos, deploy, pitch, sprint) y las **oficiales** de Supabase, Next.js y Anthropic (frontend-design).
+- **Skills para agentes de código** (Claude Code, OpenCode, Codex, Cursor…): las propias del repo (datos de NASA, geoespacial, planetario, data-biz, mapas, IA, juegos, deploy, pitch, sprint) y las **oficiales** de Supabase, Next.js y Anthropic (frontend-design).
 - **Los 14 challenges documentados**, con los datos y recursos oficiales de NASA y de las agencias socias.
 - **Reglas, requisitos de entrega, criterios del jurado y free tiers**, verificados el 13 nov 2026.
 - `CLAUDE.md` y `AGENTS.md` con las reglas del evento incorporadas (por ejemplo: la IA no idea la solución).
@@ -47,6 +47,8 @@ Deploy paso a paso: **[docs/deploy/vercel-supabase.md](docs/deploy/vercel-supaba
 - Anthropic ([anthropics/skills](https://github.com/anthropics/skills), Apache-2.0): `frontend-design`, `webapp-testing`
 
 Actualizarlas: `bash scripts/sync-official-skills.sh`.
+
+**Agentes:** Claude Code lee `CLAUDE.md` y `.claude/skills/`. OpenCode lee `AGENTS.md` y descubre las mismas skills sin configurar nada (`opencode debug skill` las lista). Detalle en [`AGENTS.md`](AGENTS.md).
 Skills de Vercel Labs ([vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills): `deploy-to-vercel`, `react-best-practices`, `web-design-guidelines`): el repo no declara licencia, así que no se redistribuyen aquí. Instálalas localmente con `npx skills add vercel-labs/agent-skills`.
 
 ## Lo esencial de la entrega (resumen)

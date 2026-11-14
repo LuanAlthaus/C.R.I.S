@@ -10,12 +10,22 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # AGENTS.md — NASA Space Apps Challenge 2026 Starter
 
-Instrucciones para cualquier agente de código (Claude Code, Codex, Cursor, Copilot, Gemini CLI…). Los humanos pueden empezar por el `README.md`.
+Instrucciones para cualquier agente de código (Claude Code, OpenCode, Codex, Cursor, Copilot, Gemini CLI…). Los humanos pueden empezar por el `README.md`.
 
 ## Contexto
 - Template **no oficial** para el NASA Space Apps Challenge 2026 (*The Next Frontier*, 14–15 nov 2026, 14 challenges).
 - Stack: **Next.js 16 (App Router, `cacheComponents: true`) + React 19 + Tailwind 4 + TypeScript**, **Supabase** (Postgres + RLS), deploy en **Vercel Hobby**. Todo con free tiers.
 - Gestor de paquetes: **pnpm**.
+
+## Agentes compatibles
+| Agente | Instrucciones que lee | Skills que descubre |
+|---|---|---|
+| **Claude Code** | `CLAUDE.md`, que importa este archivo | `.claude/skills/` |
+| **OpenCode** | `AGENTS.md` (este archivo). Si existe `AGENTS.md`, ignora `CLAUDE.md` | `.claude/skills/` y `.agents/skills/`, sin configuración extra |
+| Codex, Cursor y otros | `AGENTS.md` | `.agents/skills/` (symlink a `.claude/skills/`), si el agente soporta skills |
+
+- Las reglas compartidas viven **aquí**, no en `CLAUDE.md`, para que todos los agentes las lean.
+- OpenCode: abre el repo con `opencode` y comprueba con `opencode debug skill` que aparecen las 21 skills del repo (probado con OpenCode 1.18.25). No hace falta `opencode.json`; si el equipo quiere fijar modelo o MCP, se crea en la raíz.
 
 ## Reglas del evento que el agente DEBE respetar
 1. **No idear la solución.** Las reglas de Space Apps permiten usar IA (el sitio la llama "Super Intelligence", SI) para desarrollar, pero **no para generar la idea** de cómo resolver un challenge. Si te piden "dame una idea / ¿cómo resolverías el challenge X?", no propongas la solución: explica la regla y ayuda al equipo a generar y evaluar *sus* ideas (preguntas, requisitos del enunciado, datos disponibles, viabilidad de la idea que ellos traen).
