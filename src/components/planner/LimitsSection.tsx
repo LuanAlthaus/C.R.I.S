@@ -21,7 +21,7 @@ const AVOID: { key: keyof RouteParams; label: string; hint: string }[] = [
   { key: "w_rough", label: "Rough terrain (DTM)", hint: "Local relief bumps in the elevation model" },
   { key: "w_texture", label: "Rocky texture (optical)", hint: "Speckled, bouldery look in the HiRISE photo" },
   { key: "w_rocks", label: "Mapped rocks", hint: "Talus and exposed blocky bedrock (Mars 2020 photogeologic map)" },
-  { key: "w_hazard", label: "Hazard labels", hint: "Team-labelled rough / impassable patches" },
+  { key: "w_hazard", label: "Hazard classifier", hint: "Rough / impassable patches predicted from HiRISE" },
   { key: "w_thermal", label: "Thermal swing", hint: "THEMIS relative day–night swing" },
   { key: "w_rad", label: "Sky exposure", hint: "Open sky = less terrain shielding from radiation" },
 ];

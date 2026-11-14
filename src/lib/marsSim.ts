@@ -159,7 +159,7 @@ export const OVERLAY_LEGENDS: Record<Overlay, { label: string; stops: string[]; 
     label: "Hazard (rocks / rough ground)",
     stops: ["#f08a24", "#5a0f1a"],
     unit: "orange = rough (darker = worse), dark red = impassable",
-    source: "Team-labelled HiRISE patches + MLP classifier",
+    source: "MLP classifier on HiRISE patches; labels from NASA data by fixed rules (see Sources)",
   },
   thermal: {
     label: "Thermal swing",

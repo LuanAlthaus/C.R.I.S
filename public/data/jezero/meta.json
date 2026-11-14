@@ -58,7 +58,28 @@
   }
  ],
  "hazard_model": {
-  "type": "none"
+  "type": "MLPClassifier",
+  "labels": "nasa_rules",
+  "n_labels": 4800,
+  "holdout_accuracy": 0.931,
+  "holdout": "spatial: 20 of 100 1 km tiles",
+  "holdout_confusion": [
+   [
+    251,
+    16,
+    0
+   ],
+   [
+    35,
+    239,
+    1
+   ],
+   [
+    0,
+    6,
+    287
+   ]
+  ]
  },
  "radiation": {
   "type": "sky-view factor",
@@ -105,6 +126,10 @@
   {
    "layer": "rocks",
    "text": "NASA Mars 2020 Science Team photogeologic map on HiRISE (Stack et al. 2020, Space Sci. Rev. 216:127, doi:10.1007/s11214-020-00739-x): talus and exposed blocky-bedrock units, area fraction per 10 m cell"
+  },
+  {
+   "layer": "hazard",
+   "text": "Patch labels from NASA data by fixed rules (written with SI, see docs/SI_USAGE.md): slope >= 20° (NASA EVA limit), Mars 2020 photogeologic and in situ maps (Stack et al. 2020; Crumpler et al. 2023, CC BY 4.0), Perseverance drive path (NASA/JPL-Caltech); MLP classifier on HiRISE DTM slope/roughness and orthomosaic texture (relative hazard, not a rock count)"
   }
  ]
 }

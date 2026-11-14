@@ -1,6 +1,6 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-14 16:30 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-14 17:25 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
@@ -43,15 +43,27 @@ Actualizado: 2026-11-14 16:30 -03. Se actualiza cada hora. Al abrir una sesión 
 - Seguridad (prueba descartable, ya borrada; 12 pares reales ≥ 1,5 km): todas las rutas seguras cumplen pendiente < 20° y rugosidad ≤ 0,30 m (máx. 0,24 m). Contra la ruta más corta (sin pesos ni límite de rugosidad): rugosidad máx. 0,22–0,66 m → 0,10–0,24 m, celdas con roca 16 % → 0 % y 32 % → 2 %, pendiente máx. p. ej. 19,5° → 5,5°; largo +0–8 %. Algunas rutas seguras llegan a 18° (margen bajo 20°: decisión del equipo).
 - Nombre de la app: **C.R.I.S** (título, `<h1>`, ventana del sim, README, pipeline). "Jezero" queda solo como nombre del lugar y en rutas de datos (`public/data/jezero/`).
 
+## Hecho (sesión 17:10, rama `kaz-tests`)
+- `main` y `kaz` publicados en `8286e9b` (merge `-s ours` con el commit inicial del remoto; no se perdió contenido).
+- Pedido: "¿la clasificación podrías hacerla tú en base a los datos de la NASA? … en una rama kaz/tests". Git no permite `kaz/tests` mientras exista `kaz`, por eso la rama se llama **`kaz-tests`**.
+- Etapa `autolabel` (`notebooks/jezero_pipeline.py`) → `notebooks/labels/jezero_patches_nasa.csv` (columna `rule`): etiquetas por reglas fijas sobre datos de NASA. Gana la última regla que coincide:
+  - seguro: Perseverance pasó por el parche (`M20_traverse.json`) o la mitad o más es superficie lisa (Stack);
+  - rugoso: la mitad o más es talud, roca en bloques expuesta o dunas grandes (Stack), o regolito grueso/mixto o float-lag (Crumpler 2023, Zenodo 7545299, CC BY 4.0), o hay un bloque de eyección;
+  - intransitable: pendiente p90 ≥ 20° o la mitad o más son ripples (Crumpler; JPL NTRS 20160008265).
+  - Etiquetó 21 122 de 43 264 parches: 9519 seguros, 10 003 rugosos y 1600 intransitables.
+- `hazard`: usa el CSV del equipo si tiene 150 etiquetas o más; si no, el de `autolabel` balanceado (1600 por clase). Validación espacial con 20 de 100 tiles de 1 km apartados: **93,1 %**. `hazard.png`: 4,2 % de las celdas intransitables, de las que el 58 % ya estaban bloqueadas por pendiente o rugosidad.
+- Prueba descartable (borrada) con 12 rutas reales: con la capa de peligro el peligro medio en la ruta baja 35–65 %, el largo sube 0–12 % y no se pierde ninguna ruta.
+- Fuentes de etiquetas investigadas por el subagente `NasaTerrainLabels`. Sin mapa público: SPOC, mapa de peligros TRN y NOAH-H (403). No sirven para parches orbitales: AI4Mars (imágenes de rover) y HiRISE labeled (clases sin transitabilidad).
+
 ## Siguiente
-1. Hecho 16:35: wasm nuevo (27 MB) verificado con `/tmp/mw3_check.py`. Resultados: 60 fps, título y `<h1>` = C.R.I.S, ruta ok (2009 m, pendiente máx. 12,5°), capas Rocks/Roughness se ven, mapa/dron/rover ok y sin errores de consola. `pnpm lint` y `pnpm build` OK.
-2. Push bloqueado (16:40): commit `1c8e5eb` (docs/CRIS.md) en la rama local `kaz`, 3 commits sin publicar. `git push git@github.com:LuanAlthaus/C.R.I.S.git kaz:kaz` → "Permission to LuanAlthaus/C.R.I.S.git denied to kaz-py". LuanAlthaus tiene que dar acceso de escritura a `kaz-py` y después se repite ese comando.
+1. En curso 17:25: wasm con `hazard.png` nuevo, `/tmp/mw3_check.py`, `pnpm lint && pnpm build`, commit en `kaz-tests` y push de esa rama (`git push git@github.com:LuanAlthaus/C.R.I.S.git kaz-tests:kaz-tests`).
+2. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`.
 3. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
 4. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
 
 ## Pendiente del equipo (humano)
-- Etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`; luego `python notebooks/jezero_pipeline.py hazard` y reconstruir el wasm. No etiquetar con IA (regla del evento). Sin esto `hazard.png` está vacío y las rocas no entran en el costo.
+- Opcional: etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`. Con eso, `hazard` usa las etiquetas del equipo en vez de las de `autolabel`. Las reglas permiten datos generados con SI si se declaran (README + `SI_USAGE.md` + `meta.json`).
 
 ## Notas
 - No hay `gh` ni token de GitHub en la máquina: las notas van en `docs/kaz/`.
-- Sin commits todavía; todo está sin commitear. `25042_Perseverance.glb` en la raíz es del usuario (tiene logos: no commitearlo; la app usa `public/data/jezero/rover.glb`).
+- `25042_Perseverance.glb` en la raíz es del usuario y tiene logos. El equipo decidió dejarlo commiteado; la app usa `public/data/jezero/rover.glb`.

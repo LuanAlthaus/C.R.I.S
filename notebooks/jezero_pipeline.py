@@ -2,8 +2,8 @@
 
 Builds (a) the 10 m planning grids the Bevy sim embeds (sim/assets/jezero/), (b) the 1 km detail tiles the
 sim streams while the camera gets close (public/data/jezero/tiles/), and (c) small JSON files for the web app
-(public/data/jezero/). Stages: selftest, terrain (runs color), color, rocks, traverse, labels, hazard, radiation,
-thermal.
+(public/data/jezero/). Stages: selftest, terrain (runs color), color, rocks, traverse, labels, autolabel, hazard,
+radiation, thermal.
 
 Run from the repo root:  python notebooks/jezero_pipeline.py <stage>
 Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
@@ -51,6 +51,14 @@ COLOR_Z = 16                       # ~1.2 m/px at Jezero; only the chroma is use
 ROCKS_URL = ("https://static-content.springer.com/esm/art%3A10.1007%2Fs11214-020-00739-x/MediaObjects/"
              "11214_2020_739_MOESM3_ESM.zip")
 ROCKS_SHP = "M2020_JEZ_geology_edited_equi0_allquads_v6_archive.shp"
+# In situ geologic map from Perseverance observations (Crumpler et al. 2023, JGR Planets, doi:10.1029/2022JE007444;
+# M2020 Science Team), one shapefile per unit, lon/lat on the Mars 2000 sphere. CC BY 4.0.
+INSITU_FILE = "https://zenodo.org/api/records/7545299/files/{name}/content"
+INSITU_ROUGH = ("Coarse Regolith", "Mixed Regolith", "Float-Lag")   # loose clasts/blocks underfoot
+INSITU_BLOCKS = "Crater Ejecta Blocks"                              # individual blocks (points)
+INSITU_RIPPLES = "Ripples"
+# Perseverance drive path (NASA/JPL-Caltech, Mars 2020 MMGIS): LineStrings in lon/lat.
+DRIVE_PATH_URL = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json"
 GEO_URL = "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Jezero_FeatureServiceFromPro/FeatureServer/8/query"
 CITATION_URL = ("https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/PGM_Map_Database_MARS_INTERACTIVE2/"
                 "FeatureServer/1/query?where=USGSMapNumber%20LIKE%20%27%253464%25%27&outFields=MapTitle,SuggestedCitation&f=json")
@@ -71,6 +79,7 @@ ASSETS = ROOT / "sim/assets/jezero"
 WEB = ROOT / "public/data/jezero"
 TILES = WEB / "tiles"
 LABELS_CSV = ROOT / "notebooks/labels/jezero_patches.csv"
+NASA_LABELS_CSV = ROOT / "notebooks/labels/jezero_patches_nasa.csv"   # written by `autolabel`, not by hand
 PATCH = 24          # fine cells (48 m)
 N_GEO = 12          # geology one-hot width
 SLOPE_SCALE = 0.25  # deg per u8 step
@@ -460,14 +469,23 @@ def cmd_color(_):
     print(f"wrote coloured ortho.jpg and {NT * NT} tile orthos")
 
 
-def cmd_rocks(_):
-    """Rock-covered ground from the Mars 2020 Science Team photogeologic map (Stack et al. 2020): polygons
-    mapped as talus or as blocky bedrock. rocks.png = fraction of each 10 m cell (0..255)."""
-    import zipfile
-    import geopandas as gpd
+def fine_raster(geoms, unit, all_touched=False):
+    """Burn geometries into a uint8 mask on the 2 m fine grid (row 0 = north). `unit` = map units per degree:
+    M_PER_DEG for Mars2000 equidistant-cylindrical metres (clon 0), 1 for longitude/latitude degrees."""
     from rasterio.features import rasterize
     from rasterio.transform import from_bounds
     bb = bbox()
+    geoms = [g for g in geoms if g is not None and not g.is_empty]
+    if not geoms:
+        return np.zeros((FN, FN), np.uint8)
+    tf = from_bounds(bb["lon_min"] * unit, bb["lat_min"] * unit, bb["lon_max"] * unit, bb["lat_max"] * unit, FN, FN)
+    return rasterize(((g, 1) for g in geoms), out_shape=(FN, FN), transform=tf, dtype="uint8", all_touched=all_touched)
+
+
+def stack_map():
+    """Mars 2020 Science Team photogeologic map (Stack et al. 2020) as a GeoDataFrame in eqc metres."""
+    import zipfile
+    import geopandas as gpd
     zpath = RAW / "stack2020_photogeologic_map.zip"
     if fetch(ROCKS_URL, zpath) is None:
         sys.exit("photogeologic map download failed")
@@ -475,14 +493,20 @@ def cmd_rocks(_):
     if not (shp_dir / ROCKS_SHP).exists():
         zipfile.ZipFile(zpath).extractall(shp_dir)
     g = gpd.read_file(shp_dir / ROCKS_SHP)
-    g = g[g.geometry.notna()]
-    # The surface unit is what you walk on: blocky bedrock counts only where the map shows no or minor cover.
+    return g[g.geometry.notna()]
+
+
+def rocky_units(g):
+    """Talus, or blocky bedrock where the surface unit (what you walk on) shows no or minor cover."""
     exposed = g.SurfUName.isna() | g.SurfUName.eq("Minor Cover Us")
-    rocky = g[g.SurfUName.eq("Talus") | (exposed & g.BedrkUName.str.contains("blocky", case=False, na=False))]
-    # The shapefile is Mars2000 equidistant cylindrical, clon 0, sphere: x = lon * M_PER_DEG, y = lat * M_PER_DEG.
-    tf = from_bounds(bb["lon_min"] * M_PER_DEG, bb["lat_min"] * M_PER_DEG,
-                     bb["lon_max"] * M_PER_DEG, bb["lat_max"] * M_PER_DEG, FN, FN)
-    fine = rasterize(((geom, 1) for geom in rocky.geometry), out_shape=(FN, FN), transform=tf, dtype="uint8")
+    return g[g.SurfUName.eq("Talus") | (exposed & g.BedrkUName.str.contains("blocky", case=False, na=False))]
+
+
+def cmd_rocks(_):
+    """Rock-covered ground from the Mars 2020 Science Team photogeologic map (Stack et al. 2020): polygons
+    mapped as talus or as exposed blocky bedrock. rocks.png = fraction of each 10 m cell (0..255)."""
+    rocky = rocky_units(stack_map())
+    fine = fine_raster(rocky.geometry, M_PER_DEG)
     frac = blocks(fine.astype(np.float32), int(CELL_M / FINE_M)).mean(-1)
     save_u8("rocks.png", frac * 255)
     units = sorted({f"{s} / {b}" for s, b in zip(rocky.SurfUName.fillna("—"), rocky.BedrkUName.fillna("—"))})
@@ -575,6 +599,71 @@ def cmd_labels(_):
     print(f"wrote {LABELS_CSV} (labels: 0 safe, 1 rough/rocky, 2 impassable)")
 
 
+def cmd_autolabel(_):
+    """Hazard labels for every 48 m patch from NASA data and published NASA criteria: no per-patch judgement by a
+    person or an AI. The rules below were written with SI (docs/SI_USAGE.md); the team can edit them. The last
+    matching rule wins (impassable > rough > safe):
+      0 safe        Perseverance drove through it (M20 drive path, NASA/JPL-Caltech), or >= half the patch is mapped
+                    as undifferentiated smooth surface (Stack et al. 2020).
+      1 rough       >= half the patch mapped as talus, exposed blocky bedrock or large aeolian bedforms (Stack et al.
+                    2020; walking on sand costs 1.6-2.5x the work, NASA HRP NTRS 20220004017) or as coarse/mixed
+                    regolith or float-lag in situ, or it holds a mapped ejecta block (Crumpler et al. 2023).
+      2 impassable  p90 slope >= 20° (NASA suited-EVA limit, NTRS 20210026296 / EVA-EXP-0042; JPL rover limit on
+                    rock, NTRS 20160008265), or >= half the patch mapped as ripples in situ (Crumpler et al. 2023;
+                    JPL: avoid ripples >= 10 cm at any slope, NTRS 20160008265).
+    Writes NASA_LABELS_CSV (id,row,col,label,rule); `hazard` trains on it while the team CSV has < 150 labels."""
+    import geopandas as gpd
+    from urllib.parse import quote
+    nb = FN // PATCH
+    n = nb * PATCH
+
+    def frac(mask):
+        return blocks(mask[:n, :n].astype(np.float32), PATCH).mean(-1)
+
+    def touched(mask):
+        return blocks(mask[:n, :n], PATCH).max(-1) > 0
+
+    insitu = {}
+    for name in (*INSITU_ROUGH, INSITU_BLOCKS, INSITU_RIPPLES):
+        for ext in ("shp", "shx", "dbf", "prj"):
+            if fetch(INSITU_FILE.format(name=quote(f"{name}.{ext}")), RAW / "crumpler2023" / f"{name}.{ext}") is None:
+                sys.exit(f"in situ map file missing: {name}.{ext}")
+        insitu[name] = list(gpd.read_file(RAW / "crumpler2023" / f"{name}.shp").geometry)
+    if fetch(DRIVE_PATH_URL, RAW / "M20_traverse.json") is None:
+        sys.exit("drive path download failed")
+    drive = list(gpd.read_file(RAW / "M20_traverse.json").geometry)
+    g = stack_map()
+    slope2 = np.load(PROC / "slope2.npy", mmap_mode="r")
+    sp90 = np.percentile(blocks(np.asarray(slope2[:n, :n]), PATCH), 90, axis=-1)
+
+    stack_rough = list(rocky_units(g).geometry) + list(g[g.SurfUName.eq("Aeolian bedforms, large")].geometry)
+    rough = frac(np.maximum(fine_raster(stack_rough, M_PER_DEG),
+                            fine_raster([x for k in INSITU_ROUGH for x in insitu[k]], 1)))
+    rules = (
+        (touched(fine_raster(drive, 1, all_touched=True)), 0, "perseverance_drove"),
+        (frac(fine_raster(g[g.SurfUName.eq("Undifferentiated smooth")].geometry, M_PER_DEG)) >= 0.5, 0, "smooth_unit"),
+        (rough >= 0.5, 1, "rough_unit"),
+        (touched(fine_raster(insitu[INSITU_BLOCKS], 1, all_touched=True)), 1, "ejecta_block"),
+        (frac(fine_raster(insitu[INSITU_RIPPLES], 1)) >= 0.5, 2, "ripples"),
+        (sp90 >= 20, 2, "slope_p90_ge_20"),
+    )
+    label = np.full((nb, nb), -1, np.int8)
+    why = np.full((nb, nb), "", dtype=object)
+    for cond, lab, name in rules:
+        label[cond], why[cond] = lab, name
+
+    ii, jj = np.nonzero(label >= 0)
+    NASA_LABELS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with open(NASA_LABELS_CSV, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["id", "row", "col", "label", "rule"])
+        w.writerows((k, i * PATCH + PATCH // 2, j * PATCH + PATCH // 2, int(label[i, j]), why[i, j])
+                    for k, (i, j) in enumerate(zip(ii, jj)))
+    counts = {name: int((why == name).sum()) for _, _, name in rules}
+    print(f"labelled {len(ii)}/{nb * nb} patches; per class {np.bincount(label[label >= 0], minlength=3).tolist()}; "
+          f"final rule counts {counts}; wrote {NASA_LABELS_CSV}")
+
+
 def patch_features(slope2, rough2, ortho1, geo, r0, c0):
     s = np.asarray(slope2[r0:r0 + PATCH, c0:c0 + PATCH])
     ro = np.asarray(rough2[r0:r0 + PATCH, c0:c0 + PATCH])
@@ -591,18 +680,26 @@ def patch_features(slope2, rough2, ortho1, geo, r0, c0):
 
 def cmd_hazard(_):
     from sklearn.metrics import confusion_matrix
-    from sklearn.model_selection import train_test_split
     from sklearn.neural_network import MLPClassifier
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 
+    team = labels_filled() >= 150   # team labels win once there are enough; else the `autolabel` rule labels
+    src = LABELS_CSV if team else NASA_LABELS_CSV
     rows = []
-    if LABELS_CSV.exists():
-        with open(LABELS_CSV) as f:
+    if src.exists():
+        with open(src) as f:
             rows = [r for r in csv.DictReader(f) if r["label"].strip() in ("0", "1", "2")]
-    y = np.array([int(r["label"]) for r in rows])
+    y = np.array([int(r["label"]) for r in rows], dtype=int)
     if len(rows) < 150 or np.bincount(y, minlength=3).min() < 10:
-        sys.exit("need >=150 labels and >=10 per class in notebooks/labels/jezero_patches.csv")
+        sys.exit(f"need >=150 labels and >=10 per class: label {LABELS_CSV.name} by hand or run `autolabel`")
+    if not team:   # rule labels are dominated by the big mapped units: same number per class
+        rng = np.random.default_rng(0)
+        cap = min(int(np.bincount(y, minlength=3).min()), 2000)
+        keep = np.sort(np.concatenate([rng.permutation(np.flatnonzero(y == c))[:cap] for c in range(3)]))
+        rows, y = [rows[i] for i in keep], y[keep]
+    print(f"training on {len(rows)} {'team' if team else 'NASA-rule'} labels from {src.name}; "
+          f"per class {np.bincount(y, minlength=3).tolist()}")
 
     slope2, rough2, ortho1, geo = load_fine()
     X = np.array([patch_features(slope2, rough2, ortho1, geo, int(r["row"]) - PATCH // 2, int(r["col"]) - PATCH // 2)
@@ -612,12 +709,17 @@ def cmd_hazard(_):
         return make_pipeline(StandardScaler(),
                              MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, random_state=0))
 
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, stratify=y, random_state=0)
-    clf = model().fit(Xtr, ytr)
-    acc = float((clf.predict(Xte) == yte).mean())
-    print(f"hold-out accuracy {acc:.3f} (n={len(yte)})")
+    # Spatial hold-out: whole 1 km tiles, so neighbouring (near-duplicate) patches never straddle the split.
+    tile_of = np.array([int(int(r["row"]) * FINE_M // TILE_M) * NT + int(int(r["col"]) * FINE_M // TILE_M)
+                        for r in rows])
+    test = np.isin(tile_of, np.random.default_rng(1).choice(NT * NT, NT * NT // 5, replace=False))
+    clf = model().fit(X[~test], y[~test])
+    pred = clf.predict(X[test])
+    acc = float((pred == y[test]).mean())
+    cm = confusion_matrix(y[test], pred, labels=[0, 1, 2])
+    print(f"spatial hold-out accuracy {acc:.3f} (n={int(test.sum())}, 20 of 100 tiles)")
     print("confusion matrix (rows true 0/1/2, cols predicted):")
-    print(confusion_matrix(yte, clf.predict(Xte), labels=[0, 1, 2]))
+    print(cm)
     clf = model().fit(X, y)
 
     # Non-overlapping 48 m windows over the 2 m grid, then nearest-upsampled to the 10 m planning grid.
@@ -633,9 +735,15 @@ def cmd_hazard(_):
     save_u8("hazard.png", haz)
 
     meta = load_meta()
-    meta["hazard_model"] = {"type": "MLPClassifier", "n_labels": len(rows), "holdout_accuracy": acc}
-    set_credit(meta, "hazard", "Team-labelled HiRISE patches; MLP classifier on HiRISE DTM slope/roughness "
-                               "and orthomosaic texture (relative hazard, not a rock count)")
+    meta["hazard_model"] = {"type": "MLPClassifier", "labels": "team" if team else "nasa_rules",
+                            "n_labels": len(rows), "holdout_accuracy": round(acc, 3),
+                            "holdout": "spatial: 20 of 100 1 km tiles", "holdout_confusion": cm.tolist()}
+    set_credit(meta, "hazard", (
+        "Team-labelled HiRISE patches" if team else
+        "Patch labels from NASA data by fixed rules (written with SI, see docs/SI_USAGE.md): slope >= 20° (NASA "
+        "EVA limit), Mars 2020 photogeologic and in situ maps (Stack et al. 2020; Crumpler et al. 2023, CC BY 4.0), "
+        "Perseverance drive path (NASA/JPL-Caltech)") +
+        "; MLP classifier on HiRISE DTM slope/roughness and orthomosaic texture (relative hazard, not a rock count)")
     save_meta(meta)
     print(f"hazard.png written; impassable cells {(haz == 255).mean() * 100:.1f}%")
 
@@ -779,7 +887,8 @@ def cmd_thermal(_):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("selftest", "terrain", "color", "rocks", "traverse", "labels", "hazard", "radiation", "thermal"):
+    for name in ("selftest", "terrain", "color", "rocks", "traverse", "labels", "autolabel", "hazard", "radiation",
+                 "thermal"):
         sub.add_parser(name).set_defaults(fn=globals()[f"cmd_{name}"])
     args = ap.parse_args()
     args.fn(args)

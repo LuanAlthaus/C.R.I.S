@@ -46,6 +46,7 @@ flowchart LR
 | Condiciones | InSight (api.nasa.gov), DONKI WSA-Enlil, MODIS LST (GIBS) | Tarjetas de condiciones y comparación con la Tierra |
 | Imágenes | Feed de imágenes crudas de Perseverance (mars.nasa.gov) | Galería por sol |
 | Rover 3D | Perseverance, NASA 3D Resources (`25042_Perseverance.glb`) | `public/data/jezero/rover.glb`, sin logos |
+| Etiquetas de peligro | Mapa geológico in situ de Perseverance (Crumpler et al. 2023, doi:10.1029/2022JE007444, Zenodo 7545299, CC BY 4.0) y trazado de los drives de Perseverance (`M20_traverse.json`, NASA/JPL-Caltech) | Reglas de `autolabel` |
 
 No existe un mapa oficial publicado de abundancia de rocas ni de CFA para esta zona: JPL no lo publicó, y el de THEMIS de alta resolución sale en 2027. Tampoco funciona más la API Mars Rover Photos de api.nasa.gov (archivada en 2025-10).
 
@@ -60,7 +61,9 @@ Se ejecuta desde la raíz con `python notebooks/jezero_pipeline.py <etapa>` (`.v
 | `color` | Ortho a color: el gris de HiRISE × el croma del basemap de Mars 2020 (`ortho.jpg` y 100 `o_*.jpg`) |
 | `rocks` | `rocks.png` a partir del mapa fotogeológico |
 | `traverse` | Waypoints de Perseverance dentro de la caja |
-| `labels`, `hazard` | Hojas para etiquetar a mano y clasificador MLP entrenado **solo con etiquetas humanas** (pendiente: ≥ 150 parches) |
+| `labels` | Hojas para que el equipo etiquete parches a mano (`jezero_patches.csv`) |
+| `autolabel` | Etiquetas por reglas a partir de datos de NASA para cada parche de 48 m. Escribe `jezero_patches_nasa.csv` con la regla que puso cada etiqueta. Gana la última regla que coincide: <br>• **seguro:** Perseverance pasó por el parche, o la mitad del parche o más es superficie lisa (Stack 2020). <br>• **rugoso:** la mitad o más es talud, roca en bloques expuesta o dunas grandes (Stack 2020), o regolito grueso/mixto o float-lag in situ (Crumpler 2023), o hay un bloque de eyección mapeado. <br>• **intransitable:** pendiente p90 ≥ 20° (límite de EVA de NASA), o la mitad o más son ripples in situ (JPL: evitar ripples ≥ 10 cm) |
+| `hazard` | Clasificador MLP. Usa las etiquetas del equipo si hay 150 o más; si no, las de `autolabel`, balanceadas. Valida con 20 de los 100 tiles de 1 km apartados; resultado actual: 93,1 % |
 | `radiation`, `thermal` | Factor de cielo visible, índice THEMIS y `conditions.json` |
 
 Los datos crudos van a `data/raw/jezero/` (ignorado por git) y los intermedios a `data/processed/jezero/`.
@@ -154,10 +157,12 @@ Estos son los prompts del equipo al agente (Claude Code / omp), en orden y textu
 17. **16:16**: "recuerda que las fuentes son de la nasa y andamos en un hackaton"
 18. **16:18**: "cambia el nombre a C.R.I.S en vez del nombre raro de jezero"
 19. **16:35**: "utiliza un agente haiku para subir al repo de C.R.I.S el cual esta vinculado" y, en el formulario de confirmación: "primero crea un archivo .MD en la carpeta de docs sobre la documentacion del proyecto y prompts utilizados, basate en el handoff y el proyecto (codigo de rust, webview, etc) y luego sube en una rama nueva kaz en el remoto"
+20. **16:49**: "sube al main ahora"
+21. **17:12**: "la clasificacion podrias hacerla tu en base a los datos de la nasa? revisa las fuentes y intenta en una rama llamada kaz/tests" (git no permite `kaz/tests` mientras exista la rama `kaz`, por eso la rama se llama `kaz-tests`)
 
 ## Pendiente
 
-- **El equipo** etiqueta a mano 150 parches o más en `notebooks/labels/jezero_patches.csv`, corre la etapa `hazard` y recompila el WASM. Hasta entonces la capa de peligro está vacía.
+- **Capa de peligro:** por ahora se entrena con las etiquetas por reglas de `autolabel` (rama `kaz-tests`). Si el equipo etiqueta a mano 150 parches o más en `notebooks/labels/jezero_patches.csv`, `hazard` pasa a usar esas etiquetas. Las reglas de `autolabel` también se pueden editar.
 - **Decisiones del equipo:**
   - margen por debajo de 20°;
   - qué unidades geológicas cuentan como roca y con qué peso;
