@@ -7,21 +7,29 @@
 
 ## 1. Global Offers 2026 (Global Collaborators)
 
-Los **Global Collaborators de 2026** son **GoDaddy, Google, Meteomatics, Microsoft y Miro**. Ofrecen herramientas y recursos gratuitos para los participantes, que el sitio llama "Global Offers". Se publicaron el **13 de noviembre**.
+Los **Global Collaborators de 2026** son **GoDaddy Registry, Google, Meteomatics, Microsoft y Miro**. Sus ofertas se publicaron el **13 de noviembre** y son opcionales.
 
-**Importante:** la página de Global Offers (https://www.spaceappschallenge.org/2026/global-offers/) **requiere iniciar sesión** en spaceappschallenge.org. No se pudo leer de forma pública, así que el detalle de cada oferta (qué da, cómo se reclama y cuándo vence) **no está verificado**. Lo que sigue es lo que se pudo confirmar desde fuera, y lo que falta hay que completarlo después de entrar con tu cuenta.
+Fuente: https://www.spaceappschallenge.org/2026/global-offers/ (**requiere iniciar sesión** en Space Apps), leída el 2026-11-13 con una cuenta de participante. Cada oferta se reclama con su botón **"Claim Offer"** en esa página. Las dudas van al contacto de soporte de cada oferta o a la categoría "Global Offers" de Space Apps Connect.
 
-| Collaborator | Qué se sabe | Cómo reclamarla | Vencimiento |
-|---|---|---|---|
-| **Meteomatics** | **Confirmado** en su página oficial: acceso gratis a la **Meteomatics Weather API**, soporte técnico y documentación **mientras dure el Space Apps Challenge**. | Completar **solo** el formulario de https://www.meteomatics.com/en/meteomatics-and-nasa-space-apps-challenge/ (te mandan una cuenta). | "For the duration of the Space Apps Challenge". No hay una fecha exacta publicada. |
-| **Microsoft** | El canal oficial de YouTube muestra un video "Microsoft (Azure, Planetary Computer, Copilot, Teams): Global Offer", de la edición 2025. **El detalle de 2026 no está verificado.** | Ver la página de Global Offers (con login). | No verificado. |
-| **Google** | Hubo un "Google Cloud: Global Offer" en 2025. **El detalle de 2026 no está verificado.** | Ver la página de Global Offers (con login). | No verificado. |
-| **GoDaddy** | Hubo un "GoDaddy Registry: Global Offer" en 2025 (dominios). **El detalle de 2026 no está verificado.** | Ver la página de Global Offers (con login). | No verificado. |
-| **Miro** | Hubo un "Miro: Global Offer" en 2025 (pizarra colaborativa). **El detalle de 2026 no está verificado.** | Ver la página de Global Offers (con login). | No verificado. |
+| Collaborator | Oferta | Qué da | Condiciones y vencimiento | Soporte |
+|---|---|---|---|---|
+| **GoDaddy Registry** | Dominio y hosting gratis | **Un dominio gratis y un año de hosting**, con certificado SSL por el mismo año. | Solo dominios **no premium**. Se pide con un email válido, llega un código por correo y el registro se termina en **Porkbun** (el socio de registro de GoDaddy). | support@porkbun.com |
+| **Google** | Google Cloud | **US$ 300 de crédito por 90 días** para Google Cloud (incluye Firebase y la API de Google Maps). | Pide una tarjeta de crédito o débito para verificar que no sos un robot. No cobra solo al terminar la prueba: solo si pasás manualmente a una cuenta paga. | cloudstartupsupport@google.com |
+| **Meteomatics** | Weather API | **1.000 consultas por día** en todas las funciones de la API: datos históricos, en tiempo real y pronósticos para cualquier lugar, más de 1.800 parámetros, en JSON, CSV, XML o PNG. Tiene conector para Python. | Se completa un formulario y mandan las credenciales. **Activo mientras dure el hackathon.** | support@meteomatics.com |
+| **Microsoft** | Azure | **US$ 200 de crédito por 30 días** para clientes nuevos, más servicios gratis hasta cierto uso mensual (algunos siempre, otros por 12 meses). | Puede pedir teléfono, una tarjeta de crédito o débito **no prepaga** y una cuenta de Microsoft o GitHub. Al vencer el crédito hay que pasar a pago por uso para seguir con los servicios pagos. | samfal@microsoft.com |
+| **Microsoft** | Planetary Computer | Catálogo de datos ambientales globales (varios petabytes) con API **STAC** y herramientas para ciencias de la Tierra. | **Público, sin cuenta.** La mayoría de los datasets se bajan sin iniciar sesión; algunos pedidos necesitan un token gratuito. | samfal@microsoft.com |
+| **Microsoft** | GitHub Copilot | Plan **Copilot Free**: hasta **2.000 completions de código por mes**, más chat y agente con uso limitado. | Sin tarjeta. Los planes pagos (Pro, Pro+, Max) no están incluidos. | samfal@microsoft.com |
+| **Microsoft** | Copilot | Asistente gratis en copilot.com y en sus apps. | Hay que iniciar sesión. | samfal@microsoft.com |
+| **Microsoft** | Teams | Teams Free: reuniones de hasta 100 participantes y 60 minutos, chat ilimitado y 5 GB de archivos por usuario. | Con una cuenta de Microsoft. | samfal@microsoft.com |
+| **Miro** | Education Plan | Miro gratis **dos años para estudiantes** y para siempre para educadores. | Hay que postularse como estudiante o educador. | help.miro.com |
+| **Miro** | Business Plan | Plan Business **gratis por 14 días**. | **Pide datos de pago**: hay que cancelar antes de los 14 días para que no cobre. | help.miro.com |
+| **Miro** | Plantillas | Dos tableros gratis: *Hackathon Template Board* (trabajo en equipo e ideas) y *Hackathon Project Coach Board* (guía del proyecto). | Con una cuenta de Miro. | community.miro.com |
 
-Fuentes: https://www.spaceappschallenge.org/2026/ (lista de collaborators) · https://www.spaceappschallenge.org/resources/participant-faqs/ (fecha del 13 de noviembre) · https://www.meteomatics.com/en/meteomatics-and-nasa-space-apps-challenge/ · canal de YouTube "NASA Space Apps Challenge" (videos de Global Offer 2025)
-
-> TODO para el equipo: entrar a la página de Global Offers con la cuenta de Space Apps y completar esta tabla con los códigos, los pasos y las fechas reales.
+**Qué conviene para este stack:**
+- **Dominio gratis (GoDaddy Registry):** sirve para ponerle un dominio propio al deploy de Vercel. Se agrega en Vercel → Settings → Domains.
+- **Planetary Computer:** otra fuente de datos de la Tierra por STAC, sin cuenta. No reemplaza a los datos de NASA que exige la entrega.
+- **Meteomatics:** 1.000 consultas por día alcanzan si se cachea en una Route Handler. Vence al terminar el hackathon, así que el demo no puede depender de la API en vivo durante la evaluación (dic–ene): guardar las respuestas.
+- **Azure, Google Cloud y Miro Business piden tarjeta.** No hacen falta para el stack gratuito de este repo (Vercel + Supabase).
 
 ---
 
