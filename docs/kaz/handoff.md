@@ -1,6 +1,6 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-14 17:25 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-15 09:52 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
@@ -55,6 +55,11 @@ Actualizado: 2026-11-14 17:25 -03. Se actualiza cada hora. Al abrir una sesión 
 - Prueba descartable (borrada) con 12 rutas reales: con la capa de peligro el peligro medio en la ruta baja 35–65 %, el largo sube 0–12 % y no se pierde ninguna ruta.
 - Fuentes de etiquetas investigadas por el subagente `NasaTerrainLabels`. Sin mapa público: SPOC, mapa de peligros TRN y NOAH-H (403). No sirven para parches orbitales: AI4Mars (imágenes de rover) y HiRISE labeled (clases sin transitabilidad).
 
+## GitHub (2026-11-15 09:52)
+- `origin` = https://github.com/LuanAlthaus/C.R.I.S. Remoto antes del push: `main` = `8286e9b`, `kaz` = `8286e9b`, `kaz-tests` = `dc607c3`.
+- Subida pedida por el equipo: `kaz-tests` (`dc607c3` + commit de docs) empujado a `origin/kaz` como fast-forward. `main` no se tocó.
+- Local: sigue en la rama `kaz-tests`. La rama local `kaz` quedó en `8286e9b` y no se usa para trabajo.
+
 ## Siguiente
 1. Hecho 17:35: rama **`kaz-tests`** publicada (`bbd8411`). Navegador: sin errores, capa Hazard visible y ya no marcada "not computed yet". La ruta de prueba pasa de 2009 m y 12,5° de pendiente máx. a 2115 m y 6,5°. `pnpm lint`/`build` OK. PR: https://github.com/LuanAlthaus/C.R.I.S/pull/new/kaz-tests
 2. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`.
@@ -65,5 +70,5 @@ Actualizado: 2026-11-14 17:25 -03. Se actualiza cada hora. Al abrir una sesión 
 - Opcional: etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`. Con eso, `hazard` usa las etiquetas del equipo en vez de las de `autolabel`. Las reglas permiten datos generados con SI si se declaran (README + `SI_USAGE.md` + `meta.json`).
 
 ## Notas
-- No hay `gh` ni token de GitHub en la máquina: las notas van en `docs/kaz/`.
+- `gh` no está instalado; `git push` a `origin` por HTTPS sí funciona. Las notas van en `docs/kaz/`.
 - `25042_Perseverance.glb` en la raíz es del usuario y tiene logos. El equipo decidió dejarlo commiteado; la app usa `public/data/jezero/rover.glb`.
