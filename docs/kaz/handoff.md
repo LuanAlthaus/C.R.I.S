@@ -57,8 +57,8 @@ Actualizado: 2026-11-15 09:52 -03. Se actualiza cada hora. Al abrir una sesión 
 
 ## GitHub (2026-11-15 09:52)
 - `origin` = https://github.com/LuanAlthaus/C.R.I.S. Remoto antes del push: `main` = `8286e9b`, `kaz` = `8286e9b`, `kaz-tests` = `dc607c3`.
-- Subida pedida por el equipo: `kaz-tests` (`dc607c3` + commit de docs) empujado a `origin/kaz` como fast-forward. `main` no se tocó.
-- Local: sigue en la rama `kaz-tests`. La rama local `kaz` quedó en `8286e9b` y no se usa para trabajo.
+- Subida pedida por el equipo: `kaz-tests` (`dc607c3` + commit de docs `649a6e0`) empujado a `origin/kaz` como fast-forward, por SSH. `main` no se tocó; `origin/kaz-tests` sigue en `dc607c3`.
+- Local: sigue en la rama `kaz-tests` (`649a6e0`). La rama local `kaz` quedó en `8286e9b` y no se usa para trabajo.
 
 ## Siguiente
 1. Hecho 17:35: rama **`kaz-tests`** publicada (`bbd8411`). Navegador: sin errores, capa Hazard visible y ya no marcada "not computed yet". La ruta de prueba pasa de 2009 m y 12,5° de pendiente máx. a 2115 m y 6,5°. `pnpm lint`/`build` OK. PR: https://github.com/LuanAlthaus/C.R.I.S/pull/new/kaz-tests
@@ -70,5 +70,5 @@ Actualizado: 2026-11-15 09:52 -03. Se actualiza cada hora. Al abrir una sesión 
 - Opcional: etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`. Con eso, `hazard` usa las etiquetas del equipo en vez de las de `autolabel`. Las reglas permiten datos generados con SI si se declaran (README + `SI_USAGE.md` + `meta.json`).
 
 ## Notas
-- `gh` no está instalado; `git push` a `origin` por HTTPS sí funciona. Las notas van en `docs/kaz/`.
+- `gh` no está instalado. HTTPS a GitHub no tiene credenciales en esta máquina; el push funciona por SSH con la clave de kaz-py. Se usa la URL puntual `git@github.com:LuanAlthaus/C.R.I.S.git` sin cambiar `origin`. Las notas van en `docs/kaz/`.
 - `25042_Perseverance.glb` en la raíz es del usuario y tiene logos. El equipo decidió dejarlo commiteado; la app usa `public/data/jezero/rover.glb`.
