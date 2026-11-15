@@ -1,14 +1,14 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-15 09:52 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-15 10:45 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
 2. Toolchain: `source ~/.cargo/env` (Rust 1.97.1 + wasm32 + wasm-bindgen-cli 0.2.130), `corepack pnpm`, Python en `.venv` o `uv run --with ...`.
 3. Dev server: `corepack pnpm dev` en :3000 (comprobar con `ss -ltnp | grep 3000` antes; no lanzar dos).
 4. No correr `pnpm build` y el build de Rust a la vez (OOM). `cargo test` y el build wasm comparten `../mars_sim_target` (lock: uno espera al otro). `wasm-opt` vía npx tarda ~6 min.
-5. Metodología del usuario: delegar la recolección de información a subagentes (scout/task) que reportan en español; el agente principal edita.
-6. Pruebas en navegador: `uv run -q --with playwright --with pillow --with numpy python /tmp/mw3_check.py`. Usa la GPU Intel (`--use-angle=gl-egl --ignore-gpu-blocklist`, ~32 fps). Con swiftshader el sim va a ~1 fps y los arrastres se leen como clics.
+5. Metodología del usuario: delegar la recolección de información (lectura e investigación) a subagentes rápidos (`scout`/`sonic`; el usuario pidió Haiku, pero `task.perCallModel` está apagado y se usa el modelo configurado de cada agente) que reportan en español; el agente principal edita.
+6. Pruebas en navegador: `uv run -q --with playwright --with pillow --with numpy python <script>` con `executable_path` apuntando a `~/.cache/ms-playwright/chromium_headless_shell-*/…/chrome-headless-shell` (el Playwright nuevo de `uv` pide el build 1255, que no está instalado; el 1243 sí). Usa la GPU Intel (`--use-angle=gl-egl --ignore-gpu-blocklist`, ~32–60 fps). Con swiftshader el sim va a ~1 fps y los arrastres se leen como clics.
 
 ## Pedidos del usuario (sesión 15:00)
 1. Rover **idéntico al modelo original**: usar el GLB del equipo `25042_Perseverance.glb` (raíz del repo y `~/Descargas`).
@@ -60,9 +60,32 @@ Actualizado: 2026-11-15 09:52 -03. Se actualiza cada hora. Al abrir una sesión 
 - Subida pedida por el equipo: `kaz-tests` (`dc607c3` + commit de docs `649a6e0`) empujado a `origin/kaz` como fast-forward, por SSH. `main` no se tocó; `origin/kaz-tests` sigue en `dc607c3`.
 - Local: sigue en la rama `kaz-tests` (`649a6e0`). La rama local `kaz` quedó en `8286e9b` y no se usa para trabajo.
 
+## Hecho (sesión 10:00–10:45 del 15 nov, rama `kaz-texture`)
+Pedido: "texturas de muy baja calidad en Rover y Drone; verificar que las rutas planificadas sean las seguras; icono de info sobre el pin de destino que explique por qué es la ruta más segura".
+- **Causa real de las texturas:** con Bevy 0.20 ninguna tesela de detalle se aplicaba. El cargador expande los PNG grises de 16 bits a RGBA16 (`expand_grayscale = true` por defecto), y `finish_loads` los descartaba con "unexpected size". Todo el terreno quedaba en la malla de 40 m con el ortho de 4,9 m/px. Arreglo: alturas con `expand_grayscale = false`.
+- `terrain.rs`: `reflectance` 0,15 y ambiente 180 (antes 400); mipmaps en espacio lineal (`mipmapped(…, srgb, address)`); normal map de grano procedural (`grain_normal_map`, período de 8 m, en UV1 con tangentes) en los chunks de detalle; nivel z17 (`Sharp`) en los chunks a menos de 400 m (máx. 4, se suelta a 700 m). El evento `mars-tiles` suma `sharp`.
+- Pipeline: etapa `ortho2` → 100 `o2_*.jpg` de 2048 px (Trek z17, ~0,32 m/px de origen; 64 MB). Ningún chunk quedó fuera de la huella z17. Crédito `ortho` en `meta.json` actualizado. El caché de Trek z17 queda en `data/raw/jezero/tiles/ortho/17_*` (ignorado por git). Si MMGIS responde 503, reintentar: `color_ratio` vuelve a pedir los tiles 403 que no están en caché.
+- `route.rs`: `RouteResult` suma `max_rough_m`, `rock_cells`, `max_hazard` y `cost`. `baseline_params` (mismos límites duros, sin pesos) da la ruta permitida más corta. `straight_line_blocked` (Bresenham) cuenta las celdas prohibidas de la línea recta. Ambos van en el JSON de `mars-route` (`baseline`, `direct`).
+- `picking.rs`: `report_pins` emite `mars-pins` con la posición en pantalla de la cabeza del pin rojo. `RouteInfoPin.tsx` es un botón "i" encima del pin, con un popover: límites cumplidos, tabla contra la ruta permitida más corta, celdas prohibidas de la línea recta y la fórmula de costo. `chip` pasó a `ui.tsx`.
+- **Verificación de seguridad** (`cargo test --lib` 16/16; test `route_respects_hard_limits_on_real_site` con datos reales). Toda celda de la ruta es transitable, los pasos son adyacentes, ninguna diagonal corta una esquina bloqueada, la pendiente es menor a 20° y la rugosidad ≤ 0,30 m. El costo A* nunca supera al de la ruta más corta bajo los mismos pesos.
+
+  |Par (fila, col)|Largo segura/base (m)|Pend. máx. (°)|Rugos. máx. (m)|Celdas con roca|
+  |---|---|---|---|---|
+  |(100,100)→(300,400)|3928/3828|17,2/19,2|0,22/0,30|47/222|
+  |(500,500)→(650,700)|2750/2621|14,8/17,8|0,16/0,30|0/0|
+  |(200,800)→(450,650)|3168/3121|6,8/18,0|0,16/0,24|0/21|
+  |(900,900)→(700,750)|2758/2621|11,2/12,5|0,16/0,24|0/0|
+  |(50,500)→(250,520)|2174/2083|4,8/6,2|0,12/0,14|0/0|
+  |(500,50)→(520,300)|3572/2682|19,2/19,2|0,26/0,30|3/38|
+  |(350,350)→(500,600)|4266/3748|18,5/19,0|0,20/0,24|18/29|
+
+  El par (800,200)→(600,350) no da ruta con los límites actuales; el test exige ≥ 5 de 8 y se cumplen 7. En (500,50)→(520,300) la segura llega a 19,2°, igual que la base, dentro del límite (< 20°).
+- Navegador (Intel UHD, ruta de prueba de 3,05 km): el detalle llega a 14 chunks y 4 con z17; 40–48 fps; sin errores de consola. La desviación de luminancia del suelo cercano pasa de 1,4 a 14,0 en Rover y de 29,4 a 32,5 en Drone. El botón queda centrado sobre el pin (dx 0 px), el popover se abre y entra en la vista, Escape devuelve el foco, sigue al pin al arrastrar y se oculta al girar el dron. Ruta de prueba contra la base: +330 m (12 %), pendiente 16° → 14°, rugosidad 0,30 → 0,20 m, peligro medio 40 % → 26 %; la línea recta cruza 9 celdas prohibidas.
+- Límite que queda: a 11 m de cámara, 0,5 m/px todavía se ve suave; el grano agrega textura, pero no el detalle de rocas. El tonemapping (desatura los claros) no se tocó.
+
 ## Siguiente
-1. Hecho 17:35: rama **`kaz-tests`** publicada (`bbd8411`). Navegador: sin errores, capa Hazard visible y ya no marcada "not computed yet". La ruta de prueba pasa de 2009 m y 12,5° de pendiente máx. a 2115 m y 6,5°. `pnpm lint`/`build` OK. PR: https://github.com/LuanAlthaus/C.R.I.S/pull/new/kaz-tests
-2. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`.
+1. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`. (Hecho 17:35 del 14 nov: rama publicada, `bbd8411`.)
+2. Si el grano se ve demasiado fuerte o se nota el patrón de 8 m, ajustar solo `GRAIN_STRENGTH` (0,3–0,8) en `terrain.rs`.
 3. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
 4. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
 

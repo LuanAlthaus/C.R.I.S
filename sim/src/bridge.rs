@@ -50,7 +50,7 @@ pub fn emit(name: &str, json: String) {
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
-    if name != "mars-hover" {
+    if name != "mars-hover" && name != "mars-pins" {
         info!("{name} {json}");
     }
 }

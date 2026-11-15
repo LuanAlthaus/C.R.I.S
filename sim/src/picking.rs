@@ -85,7 +85,8 @@ impl Plugin for PickingPlugin {
             .init_resource::<PickTarget>()
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_pointer.after(bevy::input::InputSystems))
-            .add_systems(Update, (pick, hover, sync_pins, scale_pins, emit_target).chain());
+            .add_systems(Update, (pick, hover, sync_pins, scale_pins, emit_target).chain())
+            .add_systems(PostUpdate, report_pins.after(TransformSystems::Propagate));
     }
 }
 
@@ -353,12 +354,43 @@ fn sync_pins(
     }
 }
 
-/// Keep pins a readable size on screen: scale with camera distance.
+/// Pin scale at camera distance `d`: keeps pins a readable size on screen.
+fn pin_scale(d: f32) -> f32 {
+    (d / 300.0).clamp(0.12, 30.0)
+}
+
 fn scale_pins(cams: Query<&GlobalTransform, With<MainCamera>>, mut pins: Query<&mut Transform, With<Pin>>) {
     let Ok(cam) = cams.single() else { return };
     for mut tf in &mut pins {
-        let d = cam.translation().distance(tf.translation);
-        tf.scale = Vec3::splat((d / 300.0).clamp(0.12, 30.0));
+        tf.scale = Vec3::splat(pin_scale(cam.translation().distance(tf.translation)));
+    }
+}
+
+/// Tells the page where the END pin's head is on screen (logical px), for the route info button.
+fn report_pins(
+    cams: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    ends: Res<Endpoints>,
+    vs: Res<VScale>,
+    mut last: Local<Option<Option<Vec2>>>,
+) {
+    let Ok((cam, gt)) = cams.single() else { return };
+    let pos = ends.end.and_then(|e| {
+        let base = Vec3::new(e.x, e.y * vs.0, e.z);
+        // The pin head sits at y = 11 with radius 2.2 in pin space: anchor just above it.
+        let anchor = base + Vec3::Y * 14.5 * pin_scale(gt.translation().distance(base));
+        let p = cam.world_to_viewport(gt, anchor).ok()?;
+        let size = cam.logical_viewport_size()?;
+        (p.x >= 0.0 && p.y >= 0.0 && p.x <= size.x && p.y <= size.y).then_some(p)
+    });
+    let changed = match (*last, pos) {
+        (Some(Some(a)), Some(b)) => (a - b).abs().max_element() > 0.5,
+        (Some(a), b) => a.is_some() != b.is_some(),
+        (None, _) => true,
+    };
+    if changed {
+        *last = Some(pos);
+        let end = pos.map_or("null".to_string(), |p| format!(r#"{{"x":{:.1},"y":{:.1}}}"#, p.x, p.y));
+        crate::bridge::emit("mars-pins", format!(r#"{{"end":{end}}}"#));
     }
 }
 

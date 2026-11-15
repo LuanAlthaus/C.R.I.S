@@ -21,7 +21,9 @@
   "size_m": 1000.0,
   "verts": 251,
   "ortho_px": 1024,
-  "path": "tiles"
+  "path": "tiles",
+  "ortho2_px": 2048,
+  "ortho2_dist_m": 400
  },
  "h_min": -2652.11865234375,
  "h_max": -2392.3330078125,
@@ -120,16 +122,16 @@
    "text": "Sun, V.Z., and Stack, K.M., 2020, Geologic map of Jezero crater and the Nili Planum region, Mars: U.S. Geological Survey Scientific Investigations Map 3464, pamphlet 14 p., 1 sheet, scale 1:75,000, https://doi.org/10.3133/sim3464."
   },
   {
-   "layer": "ortho",
-   "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek; colour from the Mars 2020 HiRISE RGB + CTX basemap (NASA/JPL-Caltech/University of Arizona) via Mars 2020 MMGIS, extended by grey-level matching outside its footprint"
-  },
-  {
    "layer": "rocks",
    "text": "NASA Mars 2020 Science Team photogeologic map on HiRISE (Stack et al. 2020, Space Sci. Rev. 216:127, doi:10.1007/s11214-020-00739-x): talus and exposed blocky-bedrock units, area fraction per 10 m cell"
   },
   {
    "layer": "hazard",
    "text": "Patch labels from NASA data by fixed rules (written with SI, see docs/SI_USAGE.md): slope >= 20° (NASA EVA limit), Mars 2020 photogeologic and in situ maps (Stack et al. 2020; Crumpler et al. 2023, CC BY 4.0), Perseverance drive path (NASA/JPL-Caltech); MLP classifier on HiRISE DTM slope/roughness and orthomosaic texture (relative hazard, not a rock count)"
+  },
+  {
+   "layer": "ortho",
+   "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek; colour from the Mars 2020 HiRISE RGB + CTX basemap (NASA/JPL-Caltech/University of Arizona) via Mars 2020 MMGIS, extended by grey-level matching outside its footprint; near-camera tiles from the same orthomosaic at Trek zoom 17 (~0.32 m/px)"
   }
  ]
 }

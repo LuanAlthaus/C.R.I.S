@@ -2,8 +2,8 @@
 
 Builds (a) the 10 m planning grids the Bevy sim embeds (sim/assets/jezero/), (b) the 1 km detail tiles the
 sim streams while the camera gets close (public/data/jezero/tiles/), and (c) small JSON files for the web app
-(public/data/jezero/). Stages: selftest, terrain (runs color), color, rocks, traverse, labels, autolabel, hazard,
-radiation, thermal.
+(public/data/jezero/). Stages: selftest, terrain (runs color), color, ortho2, rocks, traverse, labels, autolabel,
+hazard, radiation, thermal.
 
 Run from the repo root:  python notebooks/jezero_pipeline.py <stage>
 Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
@@ -39,6 +39,9 @@ TILE_M = 1000.0                    # streamed detail tile side
 NT = int(SIZE_M / TILE_M)          # 10 x 10 tiles
 TILE_VERTS = 251                   # 4 m vertex spacing
 TILE_ORTHO_PX = 1024               # ~1 m/px
+TILE_ORTHO2_PX = 2048              # near-camera tiles, ~0.5 m/px
+ORTHO2_Z = 17                      # Trek max zoom for the 25 cm layer: ~0.32 m/px source
+ORTHO2_NOTE = "; near-camera tiles from the same orthomosaic at Trek zoom 17 (~0.32 m/px)"
 DEM_URL = "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40.tif"
 DEM_START = 172609                 # .lbl Core StartByte (1-based) - 1
 DEM_SAMPLES, DEM_UL_X, DEM_UL_Y = 21400, 4577366.0, 1106618.0   # float32 LE, 1 m/px, equirect clat 0
@@ -445,13 +448,18 @@ def cmd_terrain(_):
     cmd_color(None)
 
 
+def _chroma(bb):
+    """1 m grey ortho and the per-pixel chroma ratio of the colour basemap over the region."""
+    ortho1 = np.asarray(Image.open(PROC / "ortho_1m.png").convert("L"))
+    gray4 = np.asarray(Image.fromarray(ortho1).resize((2500, 2500), Image.BOX), dtype=np.float32)
+    return ortho1, color_ratio(bb, gray4)
+
+
 def cmd_color(_):
     """Coloured orthos: grey HiRISE (Trek, ~0.6 m/px source) for detail, chroma from the Mars 2020 colour basemap.
     Writes the region ortho (sim/assets) and the 1 km detail tile orthos."""
     bb = bbox()
-    ortho1 = np.asarray(Image.open(PROC / "ortho_1m.png").convert("L"))
-    gray4 = np.asarray(Image.fromarray(ortho1).resize((2500, 2500), Image.BOX), dtype=np.float32)
-    ratio = color_ratio(bb, gray4)
+    ortho1, ratio = _chroma(bb)
     colorize(np.asarray(Image.fromarray(ortho1).resize((2048, 2048), Image.LANCZOS)), ratio).save(
         ASSETS / "ortho.jpg", quality=85)
     TILES.mkdir(parents=True, exist_ok=True)
@@ -467,6 +475,39 @@ def cmd_color(_):
                               "Mars 2020 MMGIS, extended by grey-level matching outside its footprint")
     save_meta(meta)
     print(f"wrote coloured ortho.jpg and {NT * NT} tile orthos")
+
+def cmd_ortho2(_):
+    """Near-camera 1 km orthos (o2_*.jpg) from Trek zoom 17, coloured like the o_* tiles. Fetched per chunk: a
+    full z17 mosaic of the region is ~1 GB in memory. Chunks mostly outside the z17 footprint are skipped and the
+    sim keeps the 1 m tile there."""
+    bb = bbox()
+    _, ratio = _chroma(bb)
+    TILES.mkdir(parents=True, exist_ok=True)
+    dlat, dlon = bb["lat_max"] - bb["lat_min"], bb["lon_max"] - bb["lon_min"]
+    rk = ratio.shape[0] // NT
+    wrote = 0
+    for ty in range(NT):
+        for tx in range(NT):
+            cb = {"lat_max": bb["lat_max"] - ty * dlat / NT, "lat_min": bb["lat_max"] - (ty + 1) * dlat / NT,
+                  "lon_min": bb["lon_min"] + tx * dlon / NT, "lon_max": bb["lon_min"] + (tx + 1) * dlon / NT}
+            g = trek_mosaic(ORTHO_LAYER, ORTHO2_Z, cb, "ortho")
+            if (np.asarray(g) == 0).mean() > 0.25:
+                print(f"skip o2_{ty}_{tx}: outside z17 footprint")
+                continue
+            g = np.asarray(g.resize((TILE_ORTHO2_PX,) * 2, Image.LANCZOS), np.float32)
+            colorize(g, ratio[ty * rk:(ty + 1) * rk, tx * rk:(tx + 1) * rk]).save(TILES / f"o2_{ty}_{tx}.jpg",
+                                                                               quality=80)
+            wrote += 1
+            print(f"o2_{ty}_{tx} ({wrote})", flush=True)
+    meta = load_meta()
+    meta["tiles"]["ortho2_px"] = TILE_ORTHO2_PX
+    meta["tiles"]["ortho2_dist_m"] = 400
+    old = next(c["text"] for c in meta["credits"] if c["layer"] == "ortho")
+    if ORTHO2_NOTE not in old:
+        set_credit(meta, "ortho", old + ORTHO2_NOTE)
+    save_meta(meta)
+    print(f"wrote {wrote} near-camera orthos")
+
 
 
 def fine_raster(geoms, unit, all_touched=False):
@@ -887,8 +928,8 @@ def cmd_thermal(_):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("selftest", "terrain", "color", "rocks", "traverse", "labels", "autolabel", "hazard", "radiation",
-                 "thermal"):
+    for name in ("selftest", "terrain", "color", "ortho2", "rocks", "traverse", "labels", "autolabel", "hazard",
+                 "radiation", "thermal"):
         sub.add_parser(name).set_defaults(fn=globals()[f"cmd_{name}"])
     args = ap.parse_args()
     args.fn(args)

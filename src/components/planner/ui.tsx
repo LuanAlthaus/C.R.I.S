@@ -21,6 +21,8 @@ export const buttonCls =
 export const primaryCls =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-ink bg-ink px-4 text-sm font-medium text-bg transition-[background-color,border-color,transform] duration-150 enabled:hover:border-signal enabled:hover:bg-signal enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45";
 export const citeCls = "text-xs leading-relaxed text-muted";
+/** Translucent chip drawn over the 3D canvas. */
+export const chip = "rounded-md border border-white/10 bg-scrim/85 text-scrim-ink backdrop-blur-sm";
 
 export function Section({ n, id, title, children }: { n: string; id: string; title: string; children: ReactNode }) {
   return (

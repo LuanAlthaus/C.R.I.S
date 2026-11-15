@@ -203,7 +203,14 @@ export default function Planner() {
         className={`relative min-h-0 min-w-0 ${open ? "h-[46dvh] flex-none" : "flex-1"} lg:h-auto lg:flex-1`}
       >
         <MarsSim className="has-[canvas:focus-visible]:outline-2 has-[canvas:focus-visible]:-outline-offset-4 has-[canvas:focus-visible]:outline-signal" />
-        <MapOverlay ready={ready} camera={camera} onCamera={selectCamera} target={target} keysActive={keysActive} />
+        <MapOverlay
+          ready={ready}
+          camera={camera}
+          onCamera={selectCamera}
+          target={target}
+          keysActive={keysActive}
+          route={route}
+        />
       </main>
     </div>
   );

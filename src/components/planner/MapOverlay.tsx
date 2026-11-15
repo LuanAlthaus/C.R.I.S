@@ -11,9 +11,11 @@ import {
   type CameraMode,
   type PickTarget,
   type PointInfo,
+  type RouteResult,
   type TilesEvent,
 } from "@/lib/marsSim";
-import { fmtLat, fmtLon } from "./ui";
+import RouteInfoPin from "./RouteInfoPin";
+import { chip, fmtLat, fmtLon } from "./ui";
 
 const MODES: { id: CameraMode; label: string }[] = [
   { id: "map", label: "Map 3D" },
@@ -26,8 +28,6 @@ const CONTROLS: Record<CameraMode, string> = {
   drone: "Drag to look · WASD fly · Q/E or ←/→ turn · ↑/↓ look up/down · R/F climb/descend · Shift faster · Scroll changes speed",
   rover: "Drag to orbit the rover · Scroll to zoom · Press Play in the panel to drive the route",
 };
-
-const chip = "rounded-md border border-white/10 bg-scrim/85 text-scrim-ink backdrop-blur-sm";
 
 function HoverReadout() {
   const [p, setP] = useState<PointInfo | null>(null);
@@ -137,16 +137,19 @@ export default function MapOverlay({
   onCamera,
   target,
   keysActive,
+  route,
 }: {
   ready: boolean;
   camera: CameraMode;
   onCamera: (m: CameraMode) => void;
   target: PickTarget;
   keysActive: boolean;
+  route: RouteResult | null;
 }) {
   if (!ready) return null;
   return (
     <>
+      <RouteInfoPin route={route} />
       <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start justify-between gap-2 lg:inset-x-4 lg:top-4">
         <fieldset className={`${chip} pointer-events-auto flex gap-1 p-1`}>
           <legend className="sr-only">Camera mode</legend>

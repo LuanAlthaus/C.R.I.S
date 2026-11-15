@@ -97,11 +97,16 @@ impl CostGrid {
         }
     }
 
+    /// Which hard limits block cell `i`: (too steep, too rough, flagged impassable by the hazard model).
+    pub fn limits_hit(&self, i: usize, p: &RouteParams) -> (bool, bool, bool) {
+        // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked.
+        (self.slope[i] >= s_max_eff(p), self.rough[i] > p.rough_max_m, self.hazard[i] == 255)
+    }
+
     /// Cost multiplier for entering cell `i`; `None` = impassable.
     pub fn multiplier(&self, i: usize, p: &RouteParams) -> Option<f32> {
         let s_eff = s_max_eff(p);
-        // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked.
-        if self.slope[i] >= s_eff || self.rough[i] > p.rough_max_m || self.hazard[i] == 255 {
+        if self.limits_hit(i, p) != (false, false, false) {
             return None;
         }
         Some(
@@ -139,7 +144,13 @@ pub struct RouteResult {
     pub length_m: f32,
     pub eta_min: f32,
     pub max_slope_deg: f32,
+    pub max_rough_m: f32,
+    /// Cells with any mapped rock cover.
+    pub rock_cells: u32,
     pub mean_hazard: f32,
+    pub max_hazard: f32,
+    /// A* cost: sum of step length × cell multiplier, in metres-equivalent.
+    pub cost: f32,
 }
 
 pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &RouteParams) -> Option<RouteResult> {
@@ -148,7 +159,7 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
     grid.multiplier(idx(start), p)?;
     grid.multiplier(idx(goal), p)?;
 
-    let (cells, _) = astar(
+    let (cells, cost_cm) = astar(
         &start,
         |&(r, c)| {
             let mut out = Vec::with_capacity(8);
@@ -191,9 +202,69 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
         eta_s += step / (speed * (1.0 - SLOPE_SLOWDOWN * grid.slope(idx(w[1])) / s_eff));
     }
     let max_slope_deg = cells.iter().map(|&c| grid.slope(idx(c))).fold(0.0, f32::max);
-    let mean_hazard =
-        cells.iter().map(|&c| (grid.hazard[idx(c)] as f32 / 254.0).min(1.0)).sum::<f32>() / cells.len() as f32;
-    Some(RouteResult { cells, length_m, eta_min: eta_s / 60.0, max_slope_deg, mean_hazard })
+    let max_rough_m = cells.iter().map(|&c| grid.rough[idx(c)]).fold(0.0, f32::max);
+    let rock_cells = cells.iter().filter(|&&c| grid.rocks[idx(c)] > 0).count() as u32;
+    let hazard = |c: (usize, usize)| (grid.hazard[idx(c)] as f32 / 254.0).min(1.0);
+    let mean_hazard = cells.iter().map(|&c| hazard(c)).sum::<f32>() / cells.len() as f32;
+    let max_hazard = cells.iter().map(|&c| hazard(c)).fold(0.0, f32::max);
+    Some(RouteResult {
+        cells,
+        length_m,
+        eta_min: eta_s / 60.0,
+        max_slope_deg,
+        max_rough_m,
+        rock_cells,
+        mean_hazard,
+        max_hazard,
+        cost: cost_cm as f32 / 100.0,
+    })
+}
+
+/// Same hard limits, no risk weights: `plan` with these finds the shortest path the walker is allowed
+/// to take, the reference the safe route is compared against.
+pub fn baseline_params(p: &RouteParams) -> RouteParams {
+    RouteParams { w_slope: 0.0, w_hazard: 0.0, w_thermal: 0.0, w_rad: 0.0, w_rough: 0.0, w_texture: 0.0, w_rocks: 0.0, ..*p }
+}
+
+/// Cells on the straight line between two cells and how many of them break each hard limit (a cell
+/// can break several, so the reasons may add up to more than `blocked`).
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Crossing {
+    pub cells: u32,
+    pub blocked: u32,
+    pub slope: u32,
+    pub rough: u32,
+    pub hazard: u32,
+}
+
+/// Walk the straight line from `a` to `b` (Bresenham, both ends included) and count impassable cells.
+pub fn straight_line_blocked(grid: &CostGrid, a: (usize, usize), b: (usize, usize), p: &RouteParams) -> Crossing {
+    let mut out = Crossing::default();
+    let (mut x, mut y) = (a.1 as i64, a.0 as i64);
+    let (x1, y1) = (b.1 as i64, b.0 as i64);
+    let (dx, dy) = ((x1 - x).abs(), -(y1 - y).abs());
+    let (sx, sy) = ((x1 - x).signum(), (y1 - y).signum());
+    let mut err = dx + dy;
+    loop {
+        let (s, r, h) = grid.limits_hit(y as usize * grid.n + x as usize, p);
+        out.cells += 1;
+        out.blocked += (s || r || h) as u32;
+        out.slope += s as u32;
+        out.rough += r as u32;
+        out.hazard += h as u32;
+        if (x, y) == (x1, y1) {
+            return out;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+    }
 }
 
 /// Total climb and descent (m) along an elevation sequence.
@@ -259,10 +330,18 @@ pub fn replan(
         return;
     };
     let g = &grid.0;
-    let result = match (g.cell_of(a.x, a.z), g.cell_of(b.x, b.z)) {
-        (Some(s), Some(e)) => plan(g, s, e, &params),
-        _ => None,
+    let (result, base, direct) = match (g.cell_of(a.x, a.z), g.cell_of(b.x, b.z)) {
+        (Some(s), Some(e)) => {
+            let result = plan(g, s, e, &params);
+            // Same hard limits, so the baseline only exists when the safe route does.
+            let base = result.as_ref().and_then(|_| plan(g, s, e, &baseline_params(&params)));
+            (result, base, Some(straight_line_blocked(g, s, e, &params)))
+        }
+        _ => (None, None, None),
     };
+    let direct = direct.map(|d| {
+        serde_json::json!({"cells": d.cells, "blocked": d.blocked, "slope": d.slope, "rough": d.rough, "hazard": d.hazard})
+    });
     let polyline: Vec<Vec3> = result
         .as_ref()
         .map(|r| {
@@ -298,9 +377,17 @@ pub fn replan(
                 let i = h.len() - 1;
                 profile.push(serde_json::json!({"d": dist[i].round(), "h": (h[i] * 10.0).round() / 10.0}));
             }
+            let baseline = base.map(|b| {
+                serde_json::json!({
+                    "length_m": b.length_m, "max_slope_deg": b.max_slope_deg, "max_rough_m": b.max_rough_m,
+                    "mean_hazard": b.mean_hazard, "rock_cells": b.rock_cells,
+                })
+            });
             serde_json::json!({
                 "status": "ok", "length_m": r.length_m, "eta_min": r.eta_min, "max_slope_deg": r.max_slope_deg,
                 "mean_hazard": r.mean_hazard, "weight_factor": wf, "s_max_eff_deg": s_eff,
+                "max_rough_m": r.max_rough_m, "rough_max_m": params.rough_max_m, "rock_cells": r.rock_cells,
+                "max_hazard": r.max_hazard, "baseline": baseline, "direct": direct,
                 "ascent_m": ascent, "descent_m": descent, "profile": profile,
                 "start": {"lat": sa.0, "lon": sa.1}, "end": {"lat": sb.0, "lon": sb.1},
             })
@@ -308,6 +395,8 @@ pub fn replan(
         None => serde_json::json!({
             "status": "no_path", "length_m": 0, "eta_min": 0, "max_slope_deg": 0, "mean_hazard": 0,
             "weight_factor": wf, "s_max_eff_deg": s_eff, "ascent_m": 0, "descent_m": 0, "profile": [],
+            "max_rough_m": 0, "rough_max_m": params.rough_max_m, "rock_cells": 0, "max_hazard": 0,
+            "baseline": null, "direct": direct,
             "start": {"lat": sa.0, "lon": sa.1}, "end": {"lat": sb.0, "lon": sb.1},
         }),
     };
@@ -425,6 +514,106 @@ mod tests {
         }
         let r = plan(&g, (10, 0), (10, 19), &RouteParams::default()).expect("path");
         assert!(r.cells.iter().all(|&(row, col)| col != 10 || !(8..=12).contains(&row)), "path {:?}", r.cells);
+    }
+
+    #[test]
+    fn straight_line_counts_blocked_cells() {
+        let mut g = grid(20, 0.0);
+        for r in 0..20 {
+            g.slope[r * 20 + 10] = 25.0;
+        }
+        let c = straight_line_blocked(&g, (5, 0), (5, 19), &RouteParams::default());
+        assert_eq!(c, Crossing { cells: 20, blocked: 1, slope: 1, rough: 0, hazard: 0 });
+        // Diagonal line: one cell per step along the longer axis.
+        assert_eq!(straight_line_blocked(&g, (0, 0), (19, 19), &RouteParams::default()).cells, 20);
+    }
+
+    #[test]
+    fn baseline_is_shorter_but_riskier() {
+        let mut g = grid(20, 0.0);
+        for r in 8..=12 {
+            g.rocks[r * 20 + 10] = 255;
+        }
+        let p = RouteParams::default();
+        let safe = plan(&g, (10, 0), (10, 19), &p).expect("safe path");
+        let base = plan(&g, (10, 0), (10, 19), &baseline_params(&p)).expect("baseline path");
+        assert_eq!(safe.rock_cells, 0);
+        assert!(base.rock_cells > 0, "baseline {:?}", base.cells);
+        assert!(base.length_m < safe.length_m, "{} vs {}", base.length_m, safe.length_m);
+    }
+
+    /// Sum of step length × entry multiplier, as A* scores a path.
+    fn path_cost(g: &CostGrid, cells: &[(usize, usize)], p: &RouteParams) -> f32 {
+        cells
+            .windows(2)
+            .map(|w| {
+                let step = if w[0].0 != w[1].0 && w[0].1 != w[1].1 { DIAG_M } else { STEP_M };
+                step * g.multiplier(w[1].0 * g.n + w[1].1, p).expect("open cell")
+            })
+            .sum()
+    }
+
+    /// First open cell on growing square rings around `cell`.
+    fn open_near(g: &CostGrid, (r, c): (usize, usize), p: &RouteParams) -> (usize, usize) {
+        for d in 0..50i64 {
+            for dr in -d..=d {
+                for dc in -d..=d {
+                    let (nr, nc) = (r as i64 + dr, c as i64 + dc);
+                    if dr.abs().max(dc.abs()) == d && (0..g.n as i64).contains(&nr) && (0..g.n as i64).contains(&nc) {
+                        let cell = (nr as usize, nc as usize);
+                        if g.multiplier(cell.0 * g.n + cell.1, p).is_some() {
+                            return cell;
+                        }
+                    }
+                }
+            }
+        }
+        (r, c)
+    }
+
+    #[test]
+    fn route_respects_hard_limits_on_real_site() {
+        let site = Site::load();
+        let g = CostGrid::from_site(&site);
+        let p = RouteParams::default();
+        let pairs = [
+            ((100, 100), (300, 400)),
+            ((500, 500), (650, 700)),
+            ((200, 800), (450, 650)),
+            ((800, 200), (600, 350)),
+            ((900, 900), (700, 750)),
+            ((50, 500), (250, 520)),
+            ((500, 50), (520, 300)),
+            ((350, 350), (500, 600)),
+        ];
+        let open = |c: (usize, usize)| g.multiplier(c.0 * g.n + c.1, &p).is_some();
+        let mut ok = 0;
+        eprintln!("pair | length safe/base m | max slope safe/base ° | max rough safe/base m | rock cells safe/base");
+        for (a, b) in pairs {
+            let (a, b) = (open_near(&g, a, &p), open_near(&g, b, &p));
+            let Some(r) = plan(&g, a, b, &p) else { continue };
+            let base = plan(&g, a, b, &baseline_params(&p)).expect("baseline exists when the safe route does");
+            ok += 1;
+            assert!(r.cells.iter().all(|&c| open(c)));
+            for w in r.cells.windows(2) {
+                let (dr, dc) = (w[0].0.abs_diff(w[1].0), w[0].1.abs_diff(w[1].1));
+                assert_eq!(dr.max(dc), 1, "non-adjacent step {:?}", w);
+                if dr == 1 && dc == 1 {
+                    assert!(open((w[1].0, w[0].1)) && open((w[0].0, w[1].1)), "corner cut {:?}", w);
+                }
+            }
+            assert!(r.max_slope_deg < s_max_eff(&p) && r.max_rough_m <= p.rough_max_m);
+            // A* is optimal under the safety weights: the shortest allowed path never scores better.
+            let base_cost = path_cost(&g, &base.cells, &p);
+            assert!(r.cost <= base_cost + 0.01 * base.cells.len() as f32, "{} vs {}", r.cost, base_cost);
+            assert!(r.length_m + 1e-3 >= base.length_m);
+            eprintln!(
+                "{a:?}->{b:?} | {:.0}/{:.0} | {:.1}/{:.1} | {:.2}/{:.2} | {}/{}",
+                r.length_m, base.length_m, r.max_slope_deg, base.max_slope_deg, r.max_rough_m, base.max_rough_m,
+                r.rock_cells, base.rock_cells
+            );
+        }
+        assert!(ok >= 5, "only {ok} routes");
     }
 
     #[test]

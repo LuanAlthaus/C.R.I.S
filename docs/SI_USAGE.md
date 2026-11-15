@@ -34,3 +34,9 @@ v2.3 (14 nov, 17:00, rama `kaz-tests`): a pedido del equipo ("¿la clasificació
 - valida con 20 tiles de 1 km apartados.
 
 Resultado: 21 122 de 43 264 parches etiquetados y 93,1 % de exactitud en la validación espacial. Un subagente buscó las fuentes de etiquetas (SPOC, AI4Mars, HiRISE labeled, Crumpler, recorrido de M2020, criterios de JPL y NASA HRP). Los umbrales (mitad del parche, p90) y qué unidades cuentan como rugosas son elecciones editables del equipo.
+
+v2.4 (15 nov, rama `kaz-texture`): a pedido del equipo (texturas de baja calidad en Rover/Drone, verificar que las rutas sean las seguras, icono de info sobre el destino), Claude/omp (agente principal + subagentes de lectura) escribió código:
+- `sim/src/terrain.rs`: arreglo de la carga de las teselas de detalle (Bevy 0.20 expandía las alturas PNG de 16 bits a RGBA y ninguna tesela de 1 m se aplicaba); mipmaps en espacio lineal; menos brillo ambiente y reflectancia; un **normal map procedural de grano fino generado por código** (ruido de valor periódico, no es una imagen generada por IA); y un nivel de ortofoto z17 cerca de la cámara.
+- `notebooks/jezero_pipeline.py`: etapa `ortho2`, que baja el mismo ortomosaico HiRISE de JPL Mars Trek a zoom 17 (~0,32 m/px) y lo colorea igual que `color` → `public/data/jezero/tiles/o2_*.jpg`. Son datos de NASA reprocesados, no generados.
+- `sim/src/route.rs`: métricas nuevas de la ruta, ruta base (la permitida más corta, mismos límites duros y sin pesos), conteo de celdas prohibidas en la línea recta, y tests de seguridad con datos reales.
+- `sim/src/picking.rs` + `src/components/planner/RouteInfoPin.tsx`: botón de info sobre el pin de destino que explica por qué la ruta es la más segura.

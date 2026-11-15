@@ -49,6 +49,22 @@ export interface RouteResult {
   s_max_eff_deg: number;
   ascent_m: number;
   descent_m: number;
+  /** Hard limits and the route's worst cells against them. */
+  max_rough_m: number;
+  rough_max_m: number;
+  /** Cells with mapped rock cover. */
+  rock_cells: number;
+  max_hazard: number;
+  /** Shortest path under the same hard limits but no risk weights; null when there is no route. */
+  baseline: {
+    length_m: number;
+    max_slope_deg: number;
+    max_rough_m: number;
+    mean_hazard: number;
+    rock_cells: number;
+  } | null;
+  /** Straight line start→end: cells crossed and how many break each hard limit (reasons can overlap). */
+  direct: { cells: number; blocked: number; slope: number; rough: number; hazard: number } | null;
   /** Elevation profile: distance along route (m) and absolute elevation (m), ≤ ~100 points. */
   profile: { d: number; h: number }[];
   start: LatLon;
@@ -74,6 +90,13 @@ export type PickTarget = "start" | "end";
 export interface TilesEvent {
   loading: number;
   detail: number;
+  /** Chunks showing the near-camera z17 ortho. */
+  sharp: number;
+}
+
+/** Screen position (CSS px in the canvas) of the END pin's head; null when off screen or unset. */
+export interface PinsEvent {
+  end: { x: number; y: number } | null;
 }
 
 /** Map camera orientation, for the compass and the 2D/3D button. */
@@ -218,7 +241,8 @@ export function onSimEvent<T>(
     | "mars-hover"
     | "mars-pick-target"
     | "mars-tiles"
-    | "mars-camera",
+    | "mars-camera"
+    | "mars-pins",
   cb: (d: T) => void,
 ): () => void {
   const h = (e: Event) => cb((e as CustomEvent<T>).detail);
