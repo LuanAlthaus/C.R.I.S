@@ -191,7 +191,9 @@ function LimitNotes({ rover }: { rover: boolean }) {
     <div className={`${citeCls} space-y-1`}>
       {rover ? (
         <p>
-          Rover mass 1,025 kg and top speed 4.2 cm/s on flat hard ground = Perseverance (NASA Mars 2020 rover facts).
+          Rover mass 1,025 kg = Perseverance (NASA Mars 2020 rover facts). Drive time uses its measured AutoNav rate,
+          98 m/h with stops to image and plan (Verma et al. 2023, IEEE Aerospace), not its 152 m/h wheel top speed;
+          86 m/h on slopes of 15° or more (ENav complex-terrain rate, Verma et al. 2026, IEEE T-FR).
           Max slope 45° and rated payload 100 kg are team simulation parameters; loads above the rated payload lower
           the slope limit in proportion to total mass. Max roughness 0.40 m = Perseverance&apos;s 40 cm obstacle
           limit (NASA Mars 2020 rover facts), set apart from the EVA value.
@@ -202,7 +204,9 @@ function LimitNotes({ rover }: { rover: boolean }) {
           <p>
             Max slope 20° = NASA suited-walking limit for Artemis (EVA-EXP-0042 Rev B); NASA has no Mars value yet.
             Max roughness 0.30 m = suited step height NASA tested (ICES-2025-294), under Perseverance&apos;s 40 cm
-            obstacle limit. Walking speed (1.0 m/s on flat ground) is a team estimate. Mars gravity 3.71 m/s².
+            obstacle limit. Walking time: 3.0 km/h on flat ground (NASA/TM-2010-216138, Apollo average 2.9 km/h),
+            slowed on slopes as Apollo crews were: half speed at 8°, about a tenth at 15° (Eppler et al. 2025, LPSC).
+            Mars gravity 3.71 m/s².
           </p>
         </>
       )}

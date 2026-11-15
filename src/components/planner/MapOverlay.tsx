@@ -19,10 +19,11 @@ import { ResetIcon } from "./icons";
 import RouteInfoPin from "./RouteInfoPin";
 import { chip, fmtLat, fmtLon } from "./ui";
 
-const MODES: { id: CameraMode; label: string }[] = [
+// Drone flies with the keyboard (WASD, Q/E, R/F): PC only, hidden on touch-first devices (phones, tablets).
+const MODES: { id: CameraMode; label: string; pcOnly?: boolean }[] = [
   { id: "map", label: "Orbit" },
   { id: "rover", label: "Rover" },
-  { id: "drone", label: "Drone" },
+  { id: "drone", label: "Drone", pcOnly: true },
 ];
 
 const CONTROLS: Record<CameraMode, string> = {
@@ -157,7 +158,7 @@ export default function MapOverlay({
           <fieldset className="flex gap-0.5">
             <legend className="sr-only">Camera mode</legend>
             {MODES.map((m) => (
-              <label key={m.id} className="cursor-pointer">
+              <label key={m.id} className={`cursor-pointer ${m.pcOnly ? "pointer-coarse:hidden" : ""}`}>
                 <input
                   type="radio"
                   name="camera"

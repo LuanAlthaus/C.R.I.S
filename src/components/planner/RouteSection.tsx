@@ -180,7 +180,12 @@ export default function RouteSection({
           <>
             <dl className="grid grid-cols-2 gap-2">
               <Metric term="Length" value={r ? fmtLength(r.length_m) : "—"} />
-              <Metric term={rover ? "Drive time" : "Walking time"} value={r ? fmtEta(r.eta_min) : "—"} />
+              <Metric
+                term={rover ? "Drive time" : "Walking time"}
+                value={r ? fmtEta(r.eta_min) : "—"}
+                // 210 m/sol: Perseverance's average progress in its fastest campaign (Verma et al. 2023).
+                sub={r && rover ? `≈${Math.max(1, Math.ceil(r.length_m / 210))} sols` : undefined}
+              />
               <Metric
                 term="Max slope"
                 value={r ? `${r.max_slope_deg.toFixed(1)}°` : "—"}

@@ -10,12 +10,13 @@ use crate::terrain::Surface;
 
 pub const G_MARS: f32 = 3.71;
 pub const G_EARTH: f32 = 9.81;
-// shortcut: planning estimate, no NASA source; replace if team finds one
-pub const BASE_SPEED_MPS: f32 = 1.0;
-/// Perseverance top speed on flat hard ground: 0.1 mph = 152 m/h (NASA Mars 2020 rover facts).
-pub const ROVER_SPEED_MPS: f32 = 0.042;
-// shortcut: planning estimate, no NASA source; replace if team finds one
-const SLOPE_SLOWDOWN: f32 = 0.6;
+/// Suited walking on flat ground: 3.0 km/h, NASA's average EVA walking speed ("Apollo average of 2.9 km/h",
+/// NASA/TM-2010-216138).
+pub const BASE_SPEED_MPS: f32 = 3.0 / 3.6;
+/// Perseverance's measured effective AutoNav rate, 98.0 m/h, stops to image and plan included (Verma et al. 2023,
+/// IEEE Aerospace Conf., "Results from the First Year and a Half of Mars 2020 Robotic Operations", Table 1).
+/// The 152 m/h top speed (NASA rover facts) is wheel speed, not a traverse rate.
+pub const ROVER_SPEED_MPS: f32 = 98.0 / 3600.0;
 /// Planner cell size = site grid cell.
 pub const STEP_M: f32 = CELL_M;
 const DIAG_M: f32 = STEP_M * std::f32::consts::SQRT_2;
@@ -132,6 +133,24 @@ pub fn flat_speed(p: &RouteParams) -> f32 {
         Vehicle::Rover => ROVER_SPEED_MPS,
     };
     base / weight_factor(p).max(1.0)
+}
+
+/// Speed on ground of this slope as a fraction of the flat-ground speed.
+/// EVA, Apollo walking data (Eppler et al. 2025, LPSC 56 #2023): Apollo 14 planned 1.2 m/s level and 0.6 m/s on
+/// slopes (the ≈8° climb to Cone Crater): ×0.5 at 8°. Apollo 15 climbed ≈15° in deep regolith at ≈0.5 km/h:
+/// ×0.11 of the 4.4 km/h level plan. Linear in between, held at ×0.11 up to the limit. These are lunar surface
+/// values: the NASA Mars-suit trials found give no speed-versus-slope curve.
+/// Rover: ENav drive-rate requirement, 100 m/h in benign terrain (slope < 15°) and 86 m/h in complex terrain
+/// (Verma et al. 2026, IEEE Trans. Field Robotics).
+// shortcut: cells store slope magnitude only, so downhill is timed like uphill (slower, conservative); use the
+// signed grade between route cells if downhill times matter.
+pub fn slope_speed_factor(slope_deg: f32, vehicle: Vehicle) -> f32 {
+    match vehicle {
+        Vehicle::Eva if slope_deg <= 8.0 => 1.0 - 0.5 * slope_deg / 8.0,
+        Vehicle::Eva => (0.5 - 0.39 * (slope_deg - 8.0) / 7.0).max(0.11),
+        Vehicle::Rover if slope_deg < 15.0 => 1.0,
+        Vehicle::Rover => 0.86,
+    }
 }
 
 pub struct CostGrid {
@@ -267,14 +286,13 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
         |&cell| cell == goal,
     )?;
 
-    let s_eff = s_max_eff(p);
     let speed = flat_speed(p);
     let (mut length_m, mut eta_s) = (0.0, 0.0);
     for w in cells.windows(2) {
         let diag = w[0].0 != w[1].0 && w[0].1 != w[1].1;
         let step = if diag { DIAG_M } else { STEP_M };
         length_m += step;
-        eta_s += step / (speed * (1.0 - SLOPE_SLOWDOWN * grid.slope(idx(w[1])) / s_eff));
+        eta_s += step / (speed * slope_speed_factor(grid.slope(idx(w[1])), p.vehicle));
     }
     let max_slope_deg = cells.iter().map(|&c| grid.slope(idx(c))).fold(0.0, f32::max);
     let max_rough_m = cells.iter().map(|&c| grid.rough[idx(c)]).fold(0.0, f32::max);
@@ -628,7 +646,7 @@ pub(crate) mod tests {
                     assert!(r.max_slope_deg < s_max_eff(p));
                     // Steeper is slower and costlier, relative to the vehicle's own limit.
                     let t = slope / s_max_eff(p);
-                    let eta = 19.0 * STEP_M / (flat_speed(p) * (1.0 - SLOPE_SLOWDOWN * t)) / 60.0;
+                    let eta = 19.0 * STEP_M / (flat_speed(p) * slope_speed_factor(slope, p.vehicle)) / 60.0;
                     assert!((r.eta_min - eta).abs() < 1e-3 * eta, "eta {} vs {}", r.eta_min, eta);
                     let m = 1.0 + p.w_slope * t * t;
                     // A* rounds each step to whole centimetres: ≤ 0.5 cm × 19 steps.
@@ -638,6 +656,27 @@ pub(crate) mod tests {
         }
         // Exactly at the limit is blocked: "slope less than the limit".
         assert!(plan(&grid(20, 45.0), (0, 0), (0, 19), &rov).is_none());
+    }
+
+    /// Travel times against the official figures they come from.
+    #[test]
+    fn travel_times_match_the_sources() {
+        // Flat 1 km: suited walk at 3.0 km/h = 20 min; Perseverance at 98 m/h effective ≈ 10.2 h.
+        let km = |v| 1000.0 / (flat_speed(&RouteParams { vehicle: v, payload_kg: 0.0, ..RouteParams::default() }) * 60.0);
+        assert!((km(Vehicle::Eva) - 20.0).abs() < 0.01);
+        assert!((km(Vehicle::Rover) - 1000.0 / 98.0 * 60.0).abs() < 0.1);
+        // Apollo anchors (×0.5 at 8°, ×0.11 at 15°) and the ENav benign/complex rates (100 vs 86 m/h at 15°).
+        for (deg, f) in [(0.0, 1.0), (8.0, 0.5), (15.0, 0.11), (19.0, 0.11)] {
+            assert!((slope_speed_factor(deg, Vehicle::Eva) - f).abs() < 1e-6, "{deg}°");
+        }
+        assert_eq!((slope_speed_factor(14.9, Vehicle::Rover), slope_speed_factor(15.0, Vehicle::Rover)), (1.0, 0.86));
+        // Never faster uphill.
+        let mut prev = 1.0;
+        for d in 0..20 {
+            let f = slope_speed_factor(d as f32, Vehicle::Eva);
+            assert!(f <= prev && f > 0.0);
+            prev = f;
+        }
     }
 
     #[test]

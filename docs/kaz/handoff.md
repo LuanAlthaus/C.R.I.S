@@ -1,6 +1,6 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-15 17:20 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-15 17:55 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
@@ -122,6 +122,14 @@ Pedido: "el slope cap del rover es 45 pero no puede pasar por zonas de 23; que l
 - **Causa:** el commit `2caa981` (Jeremías: `Vehicle`, `hazard_phys`, `set_rover_speed`) no recompiló el WASM. El WASM viejo descartaba `vehicle`/`rover_s_max_deg` y el rover planificaba con 20°. **Regla: todo cambio en `sim/src` exige `bash scripts/build-sim.sh` y commitear `public/sim/`.**
 - Rugosidad por vehículo: `rover_rough_max_m` 0,40 m (EVA 0,30 m) y `route::rough_max`; campo propio en la UI (`roughLimit` en `marsSim.ts`). Con 0,30 compartido el rover perdía 2337 de 5820 celdas de 22–24°.
 - `cargo test --lib` 28/28 (nuevos: `each_vehicle_has_its_own_roughness_limit`, `rover_reaches_steep_ground_the_walker_cannot`; cota de relieve en `rover.rs` 8° → 10°). Navegador (UI real, 8 pasos alternando vehículo y cambiando límites de pendiente y rugosidad de cada uno): ningún cambio afecta al otro vehículo; sin errores de consola. WASM 27 MB optimizado.
+
+## Hecho (sesión 17:20–17:55 del 15 nov, rama `kaz` → `main`)
+- `kaz` estaba 36 archivos atrás de `main` (no tenía nada propio): fast-forward a `main` + fixes. Deploy de Vercel = `https://c-r-i-s.vercel.app/map` (sale de `main`).
+- **Crash en celular (Poco F7, Chrome 157, Android 16):** la traducción automática de Chrome (página en inglés, teléfono en español) mete `<font>`; al pasar "Play rover" → "Pause rover" React tira `insertBefore` y Next muestra "No se pudo cargar esta página". Arreglo en `layout.tsx` (`translate="no"`, meta `google=notranslate`, `suppressHydrationWarning` en `<html>`). Verificado en el teléfono: 0 `<font>`, sin issues de Next, Play/Pause sin errores. Memoria del renderer en el teléfono ~600–860 MB (Android ya lo mató antes por LOW_MEMORY: vigilar).
+- **Depurar el teléfono:** `adb` de Google en `/tmp/platform-tools` (el `android-tools` de Arch pide protobuf 36 y el sistema tiene 35). `adb forward tcp:9222 localabstract:chrome_devtools_remote` + `playwright connect_over_cdp("http://127.0.0.1:9222")` da consola y DOM del Chrome del teléfono. `adb reverse tcp:3000 tcp:3000` sirve el dev server al teléfono por USB (por Wi-Fi no llega). `adb shell dumpsys activity exit-info com.android.chrome` da por qué murieron los procesos.
+- Tiempos de recorrido con fuentes oficiales (ver `docs/SI_USAGE.md` v2.9). 1 km llano: EVA 20 min, rover 10,2 h (antes 17 min y 6,6 h). La pendiente se toma siempre como subida (conservador). NASA: los operadores del rover evitan >30° de inclinación (45° es límite de diseño); el 45° del equipo quedó igual.
+- Drone oculto en táctil (`pointer-coarse:hidden`); `allowedDevOrigins` para abrir el dev server por IP local.
+- `cargo test --lib` 29/29; lint, tsc y build OK.
 
 ## Siguiente
 1. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`. (Hecho 17:35 del 14 nov: rama publicada, `bbd8411`.)
