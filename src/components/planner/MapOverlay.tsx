@@ -1,7 +1,8 @@
 "use client";
 
-// Controls and readouts drawn over the 3D canvas: camera switcher + reset (top), live terrain
-// readout under the cursor with a contextual hint (bottom-left), tile streaming chip (bottom-right).
+// Controls and readouts drawn over the 3D canvas: camera pills + reset (top right), map buttons and the
+// live terrain HUD under the cursor (bottom right), tile streaming chip, and a contextual hint (bottom left,
+// beside the floating panel).
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { useEffect, useState } from "react";
 import {
@@ -14,21 +15,26 @@ import {
   type RouteResult,
   type TilesEvent,
 } from "@/lib/marsSim";
+import { ResetIcon } from "./icons";
 import RouteInfoPin from "./RouteInfoPin";
 import { chip, fmtLat, fmtLon } from "./ui";
 
 const MODES: { id: CameraMode; label: string }[] = [
-  { id: "map", label: "Map 3D" },
-  { id: "drone", label: "Drone" },
+  { id: "map", label: "Orbit" },
   { id: "rover", label: "Rover" },
+  { id: "drone", label: "Drone" },
 ];
 
 const CONTROLS: Record<CameraMode, string> = {
   map: "Drag to move · Scroll or pinch to zoom · Double-click to zoom in · Shift, Ctrl or right-drag to rotate and tilt · Arrows move, +/− zoom",
   drone: "Drag to look · WASD fly · Q/E or ←/→ turn · ↑/↓ look up/down · R/F climb/descend · Shift faster · Scroll changes speed",
-  rover: "Drag to orbit the rover · Scroll to zoom · Press Play in the panel to drive the route",
+  rover: "Drag to orbit the rover · Scroll to zoom · Press Play rover in the panel to drive the route",
 };
 
+const pill =
+  "flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors";
+
+/** Live readout of the terrain under the cursor; placeholders when the cursor is off the map. */
 function HoverReadout() {
   const [p, setP] = useState<PointInfo | null>(null);
   useEffect(() => {
@@ -42,27 +48,27 @@ function HoverReadout() {
       canvas?.removeEventListener("pointerleave", leave);
     };
   }, []);
-  if (!p) return null;
+  const term = "font-mono text-[10px] uppercase tracking-[0.14em] text-scrim-muted";
   return (
     // Mouse-only echo of the terrain under the cursor; picks are announced in the panel instead.
     <dl
       aria-hidden
-      className={`${chip} grid w-max grid-cols-[auto_auto] gap-x-3 gap-y-0.5 px-3 py-2 font-mono text-[11px] tabular-nums`}
+      className={`${chip} hidden w-60 grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1.5 px-3.5 py-3 text-[12px] tabular-nums sm:grid`}
     >
-      <dt className="text-scrim-muted">Lat / lon</dt>
-      <dd>
-        {fmtLat(p.lat)} {fmtLon(p.lon)}
-      </dd>
-      <dt className="text-scrim-muted">Elevation</dt>
-      <dd>{p.elevation_m.toFixed(0)} m</dd>
-      <dt className="text-scrim-muted">Slope</dt>
-      <dd className="flex items-center gap-2">
-        {p.slope_deg.toFixed(1)}°
-        <span
-          className={`rounded px-1.5 text-[10px] uppercase tracking-wider text-white ${p.passable ? "bg-scrim-ok" : "bg-scrim-danger"}`}
-        >
-          {p.passable ? "Walkable" : "Blocked"}
-        </span>
+      <dt className={term}>Cursor</dt>
+      <dd className="truncate text-right font-mono">{p ? `${fmtLat(p.lat)} ${fmtLon(p.lon)}` : "—"}</dd>
+      <dt className={term}>Elevation</dt>
+      <dd className="text-right font-mono">{p ? `${p.elevation_m.toFixed(0)} m` : "—"}</dd>
+      <dt className={term}>Slope</dt>
+      <dd className="flex items-center justify-end gap-2 font-mono">
+        {p ? `${p.slope_deg.toFixed(1)}°` : "—"}
+        {p && (
+          <span
+            className={`rounded-full px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wider text-white ${p.passable ? "bg-scrim-ok" : "bg-scrim-danger"}`}
+          >
+            {p.passable ? "Passable" : "Blocked"}
+          </span>
+        )}
       </dd>
     </dl>
   );
@@ -72,7 +78,9 @@ function HoverReadout() {
 function MapControls() {
   const [cam, setCam] = useState<CameraEvent>({ heading_deg: 0, tilt_deg: 36 });
   useEffect(() => onSimEvent<CameraEvent>("mars-camera", setCam), []);
-  const btn = `${chip} pointer-events-auto grid size-11 place-items-center text-sm font-semibold transition-colors hover:border-white/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal`;
+  const btn = `${chip} pointer-events-auto grid size-10 place-items-center text-[13px] font-semibold transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal`;
+  const inner =
+    "grid size-10 place-items-center text-lg transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal";
   const topDown = cam.tilt_deg < 5;
   return (
     <div className="flex flex-col items-end gap-1.5">
@@ -83,27 +91,17 @@ function MapControls() {
         title="North up"
         className={btn}
       >
-        <svg aria-hidden viewBox="0 0 24 24" className="size-6" style={{ transform: `rotate(${-cam.heading_deg}deg)` }}>
-          <path d="M12 2.5 15.5 12h-7z" fill="#d6452f" />
-          <path d="M12 21.5 8.5 12h7z" fill="currentColor" opacity="0.7" />
+        <svg aria-hidden viewBox="0 0 24 24" className="size-5" style={{ transform: `rotate(${-cam.heading_deg}deg)` }}>
+          <path d="M12 2.5 15.5 12h-7z" fill="var(--end)" />
+          <path d="M12 21.5 8.5 12h7z" fill="currentColor" opacity="0.6" />
         </svg>
       </button>
       <div className={`${chip} pointer-events-auto flex flex-col overflow-hidden`}>
-        <button
-          type="button"
-          onClick={() => getSim()?.map_zoom(1)}
-          aria-label="Zoom in"
-          className="grid size-11 place-items-center text-lg transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal"
-        >
+        <button type="button" onClick={() => getSim()?.map_zoom(1)} aria-label="Zoom in" className={inner}>
           +
         </button>
-        <span aria-hidden className="mx-2 h-px bg-white/15" />
-        <button
-          type="button"
-          onClick={() => getSim()?.map_zoom(-1)}
-          aria-label="Zoom out"
-          className="grid size-11 place-items-center text-lg transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal"
-        >
+        <span aria-hidden className="mx-2 h-px bg-white/10" />
+        <button type="button" onClick={() => getSim()?.map_zoom(-1)} aria-label="Zoom out" className={inner}>
           −
         </button>
       </div>
@@ -124,7 +122,7 @@ function TilesChip() {
   useEffect(() => onSimEvent<TilesEvent>("mars-tiles", setT), []);
   if (!t || t.loading <= 0) return null;
   return (
-    <p role="status" className={`${chip} flex items-center gap-2 px-2.5 py-1.5 font-mono text-[11px]`}>
+    <p role="status" className={`${chip} flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px]`}>
       <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-signal" />
       Loading HiRISE detail… ({t.loading})
     </p>
@@ -138,6 +136,7 @@ export default function MapOverlay({
   target,
   keysActive,
   route,
+  panelOpen,
 }: {
   ready: boolean;
   camera: CameraMode;
@@ -145,70 +144,70 @@ export default function MapOverlay({
   target: PickTarget;
   keysActive: boolean;
   route: RouteResult | null;
+  /** Desktop: the floating panel covers the left 376 px, so left-anchored chips move past it. */
+  panelOpen: boolean;
 }) {
   if (!ready) return null;
   return (
     <>
       <RouteInfoPin route={route} />
-      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start justify-between gap-2 lg:inset-x-4 lg:top-4">
-        <fieldset className={`${chip} pointer-events-auto flex gap-1 p-1`}>
-          <legend className="sr-only">Camera mode</legend>
-          {MODES.map((m) => (
-            <label key={m.id} className="cursor-pointer">
-              <input
-                type="radio"
-                name="camera"
-                value={m.id}
-                checked={camera === m.id}
-                onChange={() => onCamera(m.id)}
-                className="peer sr-only"
-              />
-              <span className="flex min-h-11 items-center rounded px-3 text-sm font-medium text-scrim-muted transition-colors hover:text-scrim-ink peer-checked:bg-scrim-ink peer-checked:text-scrim peer-checked:hover:text-scrim peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-signal">
-                {m.label}
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        <button
-          type="button"
-          onClick={() => getSim()?.reset_view()}
-          className={`${chip} pointer-events-auto inline-flex min-h-11 items-center gap-2 px-3 text-sm font-medium transition-colors hover:border-white/40`}
-        >
-          <svg aria-hidden viewBox="0 0 16 16" className="size-4">
-            <path
-              d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v2.8h2.8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Reset view
-        </button>
+
+      <div className="pointer-events-none absolute right-2 top-2 flex flex-col items-end gap-2 lg:right-4 lg:top-4">
+        <div className={`${chip} pointer-events-auto flex items-center gap-0.5 rounded-full p-1`}>
+          <fieldset className="flex gap-0.5">
+            <legend className="sr-only">Camera mode</legend>
+            {MODES.map((m) => (
+              <label key={m.id} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="camera"
+                  value={m.id}
+                  checked={camera === m.id}
+                  onChange={() => onCamera(m.id)}
+                  className="peer sr-only"
+                />
+                <span
+                  className={`${pill} text-scrim-muted hover:text-scrim-ink peer-checked:bg-scrim-ink peer-checked:text-scrim peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-signal`}
+                >
+                  {m.label}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <span aria-hidden className="mx-1 h-5 w-px bg-white/10" />
+          <button
+            type="button"
+            onClick={() => getSim()?.reset_view()}
+            className={`${pill} text-scrim-muted hover:bg-white/[0.07] hover:text-scrim-ink`}
+          >
+            <ResetIcon className="size-3.5" />
+            <span className="sr-only sm:not-sr-only">Reset view</span>
+          </button>
+        </div>
+        <TilesChip />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-2 bottom-2 flex items-end justify-between gap-2 lg:inset-x-4 lg:bottom-4">
-        <div className="min-w-0 space-y-1.5">
-          <HoverReadout />
-          <div className={`${chip} max-w-[34rem] px-3 py-2 text-xs leading-relaxed`}>
-            <p className="font-medium">
-              <span
-                aria-hidden
-                className="mr-1.5 inline-block size-2 rounded-full"
-                style={{ background: target === "start" ? "#2e9e5b" : "#d6452f" }}
-              />
-              Click the terrain to place {target === "start" ? "START" : "END"}
-            </p>
-            <p className="text-scrim-ink/80">{CONTROLS[camera]}</p>
-            <p className="text-scrim-muted">
-              {keysActive ? "Keyboard active in the 3D view." : "Click the 3D view to use the keyboard."}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
-          {camera === "map" && <MapControls />}
-          <TilesChip />
+      <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-2 lg:bottom-4 lg:right-4">
+        {camera === "map" && <MapControls />}
+        <HoverReadout />
+      </div>
+
+      <div
+        className={`pointer-events-none absolute bottom-2 left-2 right-16 sm:right-[17rem] lg:bottom-4 ${panelOpen ? "lg:left-[392px]" : "lg:left-4"}`}
+      >
+        <div className={`${chip} w-fit max-w-[34rem] px-3.5 py-2.5 text-xs leading-relaxed`}>
+          <p className="flex items-center gap-2 font-medium">
+            <span
+              aria-hidden
+              className="inline-block size-2 flex-none rounded-full"
+              style={{ background: target === "start" ? "var(--start)" : "var(--end)" }}
+            />
+            Click the terrain to place {target === "start" ? "START" : "END"}
+          </p>
+          <p className="mt-0.5 hidden text-scrim-ink/75 md:block">{CONTROLS[camera]}</p>
+          <p className="hidden text-scrim-muted md:block">
+            {keysActive ? "Keyboard active in the 3D view." : "Click the 3D view to use the keyboard."}
+          </p>
         </div>
       </div>
     </>

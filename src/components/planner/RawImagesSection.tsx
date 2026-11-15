@@ -3,7 +3,8 @@
 // Perseverance first-person raw images for one sol, via /api/nasa/raw-images.
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { buttonCls, citeCls, inputCls, labelCls, primaryCls, Section } from "./ui";
+import { CameraIcon } from "./icons";
+import { buttonCls, citeCls, Collapsible, inputCls, labelCls } from "./ui";
 
 interface RawImage {
   id: string;
@@ -65,7 +66,7 @@ export default function RawImagesSection({
   const loading = res?.sol !== sol;
 
   return (
-    <Section n="05" id="sec-view" title="First-person view">
+    <Collapsible id="sec-view" icon={<CameraIcon />} title="Rover photos" summary={`Sol ${sol}`}>
       <p className="text-sm leading-relaxed text-muted">
         Real ground-level photos Perseverance took near the point you picked, to sanity-check what the map layers
         predict about that terrain.
@@ -102,7 +103,7 @@ export default function RawImagesSection({
             className={`${inputCls} mt-1`}
           />
         </div>
-        <button type="submit" className={primaryCls}>
+        <button type="submit" className={buttonCls}>
           Load images
         </button>
       </form>
@@ -180,6 +181,6 @@ export default function RawImagesSection({
           </div>
         )}
       </dialog>
-    </Section>
+    </Collapsible>
   );
 }

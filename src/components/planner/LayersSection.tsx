@@ -2,7 +2,8 @@
 
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { OVERLAY_LEGENDS, type Overlay } from "@/lib/marsSim";
-import { citeCls, labelCls, Section, type SiteMeta } from "./ui";
+import { LayersIcon } from "./icons";
+import { citeCls, Collapsible, labelCls, type SiteMeta } from "./ui";
 
 const ORDER: Overlay[] = ["none", "slope", "rough", "texture", "rocks", "hazard", "thermal", "radiation", "geology", "cost"];
 const META_KEY = { hazard: "hazard_model", radiation: "radiation", thermal: "thermal" } as const;
@@ -80,7 +81,12 @@ export default function LayersSection({
   const extra = EXTRA_CLASS[overlay];
 
   return (
-    <Section n="03" id="sec-layers" title="Layers">
+    <Collapsible
+      id="sec-layers"
+      icon={<LayersIcon />}
+      title="Map layers"
+      summary={overlay === "none" ? "Orthophoto" : OVERLAY_LEGENDS[overlay].label}
+    >
       <fieldset>
         <legend className="sr-only">Map overlay</legend>
         <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
@@ -193,7 +199,7 @@ export default function LayersSection({
           value={vscale}
           onChange={(e) => onVscale(e.currentTarget.valueAsNumber)}
           aria-describedby="vscale-note"
-          className="h-11 w-full cursor-pointer accent-signal"
+          className="h-9 w-full cursor-pointer accent-signal"
         />
         <p id="vscale-note" className="-mt-2 text-xs text-muted">
           {vscale === 1
@@ -201,6 +207,6 @@ export default function LayersSection({
             : `Relief exaggerated ${vscale}× for visibility; analysis uses true elevations.`}
         </p>
       </div>
-    </Section>
+    </Collapsible>
   );
 }

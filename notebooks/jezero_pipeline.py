@@ -2,8 +2,8 @@
 
 Builds (a) the 10 m planning grids the Bevy sim embeds (sim/assets/jezero/), (b) the 1 km detail tiles the
 sim streams while the camera gets close (public/data/jezero/tiles/), and (c) small JSON files for the web app
-(public/data/jezero/). Stages: selftest, terrain (runs color), color, ortho2, rocks, traverse, labels, autolabel,
-hazard, radiation, thermal.
+(public/data/jezero/). Stages: selftest, terrain (runs color), fine, color, ortho2, rocks, traverse, labels,
+autolabel, hazard, hazard_phys, radiation, thermal.
 
 Run from the repo root:  python notebooks/jezero_pipeline.py <stage>
 Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
@@ -652,6 +652,32 @@ def cmd_autolabel(_):
                     rock, NTRS 20160008265), or >= half the patch mapped as ripples in situ (Crumpler et al. 2023;
                     JPL: avoid ripples >= 10 cm at any slope, NTRS 20160008265).
     Writes NASA_LABELS_CSV (id,row,col,label,rule); `hazard` trains on it while the team CSV has < 150 labels."""
+    nb = FN // PATCH
+    label, why, names = rule_labels(with_slope=True)
+    ii, jj = np.nonzero(label >= 0)
+    NASA_LABELS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with open(NASA_LABELS_CSV, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["id", "row", "col", "label", "rule"])
+        w.writerows((k, i * PATCH + PATCH // 2, j * PATCH + PATCH // 2, int(label[i, j]), why[i, j])
+                    for k, (i, j) in enumerate(zip(ii, jj)))
+    counts = {name: int((why == name).sum()) for name in names}
+    print(f"labelled {len(ii)}/{nb * nb} patches; per class {np.bincount(label[label >= 0], minlength=3).tolist()}; "
+          f"final rule counts {counts}; wrote {NASA_LABELS_CSV}")
+
+
+def patch_slope_p90():
+    """p90 of the 2 m slopes in each 48 m patch (nb x nb): what the `slope_p90_ge_20` rule tests."""
+    nb = FN // PATCH
+    n = nb * PATCH
+    slope2 = np.load(PROC / "slope2.npy", mmap_mode="r")
+    return np.percentile(blocks(np.asarray(slope2[:n, :n]), PATCH), 90, axis=-1)
+
+
+def rule_labels(with_slope):
+    """The `autolabel` rules as (label, rule name, rule names) per 48 m patch, label -1 = no rule matched.
+    with_slope=False leaves out the `slope_p90_ge_20` rule, so the labels describe the ground itself and the
+    planner applies the slope limit of each vehicle on its own (see `hazard_phys`)."""
     import geopandas as gpd
     from urllib.parse import quote
     nb = FN // PATCH
@@ -673,8 +699,6 @@ def cmd_autolabel(_):
         sys.exit("drive path download failed")
     drive = list(gpd.read_file(RAW / "M20_traverse.json").geometry)
     g = stack_map()
-    slope2 = np.load(PROC / "slope2.npy", mmap_mode="r")
-    sp90 = np.percentile(blocks(np.asarray(slope2[:n, :n]), PATCH), 90, axis=-1)
 
     stack_rough = list(rocky_units(g).geometry) + list(g[g.SurfUName.eq("Aeolian bedforms, large")].geometry)
     rough = frac(np.maximum(fine_raster(stack_rough, M_PER_DEG),
@@ -685,23 +709,14 @@ def cmd_autolabel(_):
         (rough >= 0.5, 1, "rough_unit"),
         (touched(fine_raster(insitu[INSITU_BLOCKS], 1, all_touched=True)), 1, "ejecta_block"),
         (frac(fine_raster(insitu[INSITU_RIPPLES], 1)) >= 0.5, 2, "ripples"),
-        (sp90 >= 20, 2, "slope_p90_ge_20"),
     )
+    if with_slope:
+        rules += ((patch_slope_p90() >= 20, 2, "slope_p90_ge_20"),)
     label = np.full((nb, nb), -1, np.int8)
     why = np.full((nb, nb), "", dtype=object)
     for cond, lab, name in rules:
         label[cond], why[cond] = lab, name
-
-    ii, jj = np.nonzero(label >= 0)
-    NASA_LABELS_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with open(NASA_LABELS_CSV, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["id", "row", "col", "label", "rule"])
-        w.writerows((k, i * PATCH + PATCH // 2, j * PATCH + PATCH // 2, int(label[i, j]), why[i, j])
-                    for k, (i, j) in enumerate(zip(ii, jj)))
-    counts = {name: int((why == name).sum()) for _, _, name in rules}
-    print(f"labelled {len(ii)}/{nb * nb} patches; per class {np.bincount(label[label >= 0], minlength=3).tolist()}; "
-          f"final rule counts {counts}; wrote {NASA_LABELS_CSV}")
+    return label, why, [name for _, _, name in rules]
 
 
 def patch_features(slope2, rough2, ortho1, geo, r0, c0):
@@ -786,6 +801,115 @@ def cmd_hazard(_):
         "; MLP classifier on HiRISE DTM slope/roughness and orthomosaic texture (relative hazard, not a rock count)")
     save_meta(meta)
     print(f"hazard.png written; impassable cells {(haz == 255).mean() * 100:.1f}%")
+
+
+def cmd_fine(_):
+    """Only the 2 m intermediates that `autolabel`, `hazard` and `hazard_phys` read (data/processed/jezero), from
+    the same DEM and orthomosaic as `terrain`, without rewriting any sim asset. Compares them with the committed
+    slope.png / rough.png / texture.png, so the hazard stages train on the terrain the sim plans on."""
+    for d in (RAW, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+    bb = bbox()
+    a = fetch_dem(bb)
+    h2 = resize_f(a, (FN, FN), Image.BOX)
+    del a
+    gy, gx = np.gradient(h2, FINE_M)
+    slope2 = np.degrees(np.arctan(np.hypot(gx, gy))).astype(np.float32)
+    del gx, gy
+    rough2 = np.abs(h2 - box_mean(h2, 5)).astype(np.float32)
+    np.save(PROC / "slope2.npy", slope2)
+    np.save(PROC / "rough2.npy", rough2)
+    ortho = trek_mosaic(ORTHO_LAYER, 16, bb, "ortho")
+    ortho1 = np.asarray(ortho.resize((int(SIZE_M), int(SIZE_M)), Image.BILINEAR))
+    del ortho
+    Image.fromarray(ortho1).save(PROC / "ortho_1m.png")
+
+    k = int(CELL_M / FINE_M)
+    tex = blocks(ortho1.astype(np.float32), int(CELL_M)).std(-1)
+    for name, v in (("slope.png", np.percentile(blocks(slope2, k), 90, axis=-1) / SLOPE_SCALE),
+                    ("rough.png", np.percentile(blocks(rough2, k), 90, axis=-1) / ROUGH_SCALE),
+                    ("texture.png", tex / load_meta()["texture"]["scale"])):
+        mine = np.clip(np.round(v), 0, 255).astype(int)
+        diff = np.abs(mine - np.asarray(Image.open(ASSETS / name)).astype(int))
+        print(f"{name}: {(diff == 0).mean() * 100:.2f}% of cells identical to the committed asset, "
+              f"{(diff <= 1).mean() * 100:.2f}% within 1 step, max diff {diff.max()} steps")
+
+
+def cmd_hazard_phys(_):
+    """Hazard of the ground itself, for planners that apply their own slope limit (rover mode). `hazard` learned
+    "impassable" almost only from the slope >= 20° rule (1581 of 1600 class-2 patches) and from slope features,
+    so its 255 cells mostly repeat the EVA slope limit. hazard.png (EVA) is not changed. hazard_phys.png:
+      - rough share 0..127 (same scale as in `hazard`): MLP safe vs rough on the `autolabel` rules without the
+        slope rule, from DTM roughness, HiRISE texture and geology only (no slope features);
+      - 255 (impassable): patches mapped as ripples (rule), and every cell `hazard` flags impassable in a patch
+        whose p90 slope is under 20°, i.e. not explained by the slope rule: kept as a possible real obstacle.
+    Slope stays a hard limit of the planner, per vehicle (sim/src/route.rs)."""
+    from sklearn.metrics import confusion_matrix
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    nb = FN // PATCH
+    label, _, _ = rule_labels(with_slope=False)
+    ii, jj = np.nonzero((label == 0) | (label == 1))
+    y = label[ii, jj].astype(int)
+    rng = np.random.default_rng(0)
+    cap = min(int(np.bincount(y, minlength=2).min()), 2000)
+    keep = np.sort(np.concatenate([rng.permutation(np.flatnonzero(y == c))[:cap] for c in range(2)]))
+    ii, jj, y = ii[keep], jj[keep], y[keep]
+    print(f"training on {len(y)} NASA-rule labels without the slope rule; per class {np.bincount(y).tolist()}")
+
+    slope2, rough2, ortho1, geo = load_fine()
+
+    def feats(i, j):   # patch_features minus its three slope statistics
+        return patch_features(slope2, rough2, ortho1, geo, i * PATCH, j * PATCH)[3:]
+
+    X = np.array([feats(i, j) for i, j in zip(ii, jj)])
+
+    def model():
+        return make_pipeline(StandardScaler(),
+                             MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, random_state=0))
+
+    # Same spatial hold-out as `hazard`: whole 1 km tiles.
+    tile_of = np.array([int((i * PATCH + PATCH // 2) * FINE_M // TILE_M) * NT +
+                        int((j * PATCH + PATCH // 2) * FINE_M // TILE_M) for i, j in zip(ii, jj)])
+    test = np.isin(tile_of, np.random.default_rng(1).choice(NT * NT, NT * NT // 5, replace=False))
+    clf = model().fit(X[~test], y[~test])
+    acc = float((clf.predict(X[test]) == y[test]).mean())
+    cm = confusion_matrix(y[test], clf.predict(X[test]), labels=[0, 1])
+    print(f"spatial hold-out accuracy {acc:.3f} (n={int(test.sum())}); confusion (rows true 0/1):\n{cm}")
+    clf = model().fit(X, y)
+
+    P1 = np.zeros((nb, nb))
+    for i in range(nb):
+        P1[i] = clf.predict_proba(np.array([feats(i, j) for j in range(nb)]))[:, 1]
+    k = int(CELL_M / FINE_M)
+    ri = np.minimum(np.arange(GRID) * k // PATCH, nb - 1)
+    haz = np.round(254 * 0.5 * P1)[np.ix_(ri, ri)]
+    ripples = (label == 2)[np.ix_(ri, ri)]
+    old = np.asarray(Image.open(ASSETS / "hazard.png"))
+    not_slope = (patch_slope_p90() < 20)[np.ix_(ri, ri)]
+    kept = (old == 255) & not_slope
+    blocked = ripples | kept
+    haz[blocked] = 255
+    save_u8("hazard_phys.png", haz)
+
+    released = (old == 255) & ~blocked
+    print(f"hazard_phys.png written; impassable {blocked.mean() * 100:.2f}% of cells (ripples {ripples.sum()}, "
+          f"kept from hazard {kept.sum()}); hazard.png impassable {(old == 255).mean() * 100:.2f}%; "
+          f"released (only explained by the slope >= 20° rule) {released.sum()} cells")
+
+    meta = load_meta()
+    meta["hazard_phys_model"] = {"type": "MLPClassifier", "labels": "nasa_rules_without_slope", "classes": 2,
+                                 "n_labels": int(len(y)), "holdout_accuracy": round(acc, 3),
+                                 "holdout": "spatial: 20 of 100 1 km tiles", "holdout_confusion": cm.tolist(),
+                                 "impassable_cells": int(blocked.sum()), "released_cells": int(released.sum())}
+    set_credit(meta, "hazard_phys", (
+        "Rover-mode hazard: patch labels from NASA data by fixed rules without the slope rule (written with SI, see "
+        "docs/SI_USAGE.md): Mars 2020 photogeologic and in situ maps (Stack et al. 2020; Crumpler et al. 2023, CC BY "
+        "4.0), Perseverance drive path (NASA/JPL-Caltech); MLP on HiRISE DTM roughness and orthomosaic texture "
+        "(no slope features); impassable = mapped ripples plus hazard-model cells not explained by slope"))
+    save_meta(meta)
 
 
 def cmd_radiation(_):
@@ -927,8 +1051,8 @@ def cmd_thermal(_):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("selftest", "terrain", "color", "ortho2", "rocks", "traverse", "labels", "autolabel", "hazard",
-                 "radiation", "thermal"):
+    for name in ("selftest", "terrain", "fine", "color", "ortho2", "rocks", "traverse", "labels", "autolabel",
+                 "hazard", "hazard_phys", "radiation", "thermal"):
         sub.add_parser(name).set_defaults(fn=globals()[f"cmd_{name}"])
     args = ap.parse_args()
     args.fn(args)

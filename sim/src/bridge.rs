@@ -18,6 +18,8 @@ pub enum SimCommand {
     Camera(CameraMode),
     Params(RouteParams),
     Play(bool),
+    /// Rover playback speed multiplier (1, 2 or 4).
+    RoverSpeed(f32),
     ClearRoute,
     PickTarget(PickTarget),
     VerticalScale(f32),
@@ -90,6 +92,7 @@ fn drain_commands(mut t: Targets) {
                 t.params.set_if_neq(p);
             }
             SimCommand::Play(play) => t.playback.playing = play,
+            SimCommand::RoverSpeed(v) => t.playback.speed = v.clamp(0.25, 8.0),
             SimCommand::ClearRoute => {
                 *t.ends = Endpoints::default();
                 *t.target = PickTarget::Start;
@@ -149,6 +152,11 @@ mod web {
     #[wasm_bindgen]
     pub fn play_route(play: bool) {
         push(SimCommand::Play(play));
+    }
+
+    #[wasm_bindgen]
+    pub fn set_rover_speed(speed: f32) {
+        push(SimCommand::RoverSpeed(speed));
     }
 
     #[wasm_bindgen]

@@ -1,6 +1,7 @@
-// Shared bits for the planner panel: one section frame, one field/button look, number formatting.
+// Shared bits for the planner panel: the collapsible row frame, one field/button look, number formatting.
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import type { ReactNode } from "react";
+import { ChevronIcon } from "./icons";
 
 /** Subset of public/data/jezero/meta.json the UI reads. */
 export interface SiteMeta {
@@ -13,26 +14,58 @@ export interface SiteMeta {
   credits: { layer: string; text: string }[];
 }
 
-export const labelCls = "font-mono text-[11px] uppercase tracking-[0.14em] text-muted";
+export const labelCls = "font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted";
 export const inputCls =
-  "h-11 w-full rounded-md border border-line bg-bg px-3 font-mono text-sm tabular-nums text-ink user-invalid:border-danger";
+  "h-10 w-full rounded-lg border border-line bg-bg px-3 font-mono text-sm tabular-nums text-ink transition-colors hover:border-white/20 user-invalid:border-danger";
 export const buttonCls =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-bg px-4 text-sm font-medium text-ink transition-[border-color,transform] duration-150 enabled:hover:border-ink enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-white/[0.06] px-4 text-sm font-medium text-ink transition-[background-color,border-color,transform] duration-150 enabled:hover:bg-white/[0.11] enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40";
 export const primaryCls =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-ink bg-ink px-4 text-sm font-medium text-bg transition-[background-color,border-color,transform] duration-150 enabled:hover:border-signal enabled:hover:bg-signal enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gold px-4 text-sm font-semibold text-gold-ink shadow-[0_8px_24px_-10px_var(--gold)] transition-[filter,transform,box-shadow] duration-150 enabled:hover:brightness-110 enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 export const citeCls = "text-xs leading-relaxed text-muted";
-/** Translucent chip drawn over the 3D canvas. */
-export const chip = "rounded-md border border-white/10 bg-scrim/85 text-scrim-ink backdrop-blur-sm";
+/** Translucent card drawn over the 3D canvas. */
+export const chip =
+  "rounded-xl border border-white/[0.08] bg-scrim/85 text-scrim-ink shadow-[0_10px_30px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md";
 
-export function Section({ n, id, title, children }: { n: string; id: string; title: string; children: ReactNode }) {
+/**
+ * One collapsible row of the panel: icon, name, a short summary on the right and a chevron.
+ * Native <details>, so the content stays mounted (fetches and uncontrolled inputs keep their state).
+ */
+export function Collapsible({
+  id,
+  icon,
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  id: string;
+  icon: ReactNode;
+  title: string;
+  summary?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <section aria-labelledby={id} className="border-b border-line px-4 py-5 last:border-b-0">
-      <h2 id={id} className="flex items-baseline gap-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
-        <span className="text-signal">{n}</span>
-        {title}
-      </h2>
-      <div className="mt-3.5 space-y-3.5">{children}</div>
-    </section>
+    <details open={defaultOpen} className="group/row border-t border-line">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 transition-colors hover:bg-white/[0.03] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden
+          className="grid size-7 flex-none place-items-center rounded-lg bg-white/[0.05] text-muted transition-colors group-open/row:bg-signal-soft group-open/row:text-signal"
+        >
+          {icon}
+        </span>
+        <span id={id} className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
+          {title}
+        </span>
+        {summary != null && (
+          <span className="max-w-[48%] truncate font-mono text-[11px] tabular-nums text-muted">{summary}</span>
+        )}
+        <ChevronIcon className="size-3 flex-none text-muted transition-transform duration-200 group-open/row:rotate-90" />
+      </summary>
+      <div role="group" aria-labelledby={id} className="space-y-3.5 px-4 pb-5 pt-1.5">
+        {children}
+      </div>
+    </details>
   );
 }
 

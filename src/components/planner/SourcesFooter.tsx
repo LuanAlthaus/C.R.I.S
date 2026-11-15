@@ -1,6 +1,7 @@
 // Every data source the planner shows, in text (no agency logos, per Space Apps rules).
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
-import { labelCls, type SiteMeta } from "./ui";
+import { BookIcon } from "./icons";
+import { Collapsible, type SiteMeta } from "./ui";
 
 const FIXED_SOURCES: [string, string][] = [
   [
@@ -28,11 +29,8 @@ export default function SourcesFooter({ meta }: { meta: SiteMeta | null }) {
     ...FIXED_SOURCES,
   ];
   return (
-    <footer aria-labelledby="sec-sources" className="bg-bg px-4 py-5 text-xs leading-relaxed text-muted">
-      <h2 id="sec-sources" className={labelCls}>
-        Sources
-      </h2>
-      <dl className="mt-3 space-y-2">
+    <Collapsible id="sec-sources" icon={<BookIcon />} title="Sources" summary={`${sources.length} cited`}>
+      <dl className="space-y-2 text-xs leading-relaxed text-muted">
         {sources.map(([layer, text]) => (
           <div key={layer + text}>
             <dt className="font-mono text-[10px] uppercase tracking-wider text-ink">{layer}</dt>
@@ -40,8 +38,7 @@ export default function SourcesFooter({ meta }: { meta: SiteMeta | null }) {
           </div>
         ))}
       </dl>
-      <p className="mt-4 font-medium text-ink">Data: NASA. Not endorsed by NASA.</p>
-      <p className="mt-1">Code written with AI assistance — see docs/SI_USAGE.md.</p>
-    </footer>
+      <p className="text-xs text-muted">Code written with AI assistance — see docs/SI_USAGE.md.</p>
+    </Collapsible>
   );
 }

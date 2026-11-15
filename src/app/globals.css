@@ -46,7 +46,37 @@
   }
 }
 
+/* Map Viewer "mission panel": always dark, whatever the colour scheme. Redefines the planner tokens
+   inside the viewer, so every section inherits the look. Charcoal-brown panel, gold accent. */
+.theme-hud {
+  color-scheme: dark;
+  --bg: #1c1915;
+  --surface: #121010;
+  --ink: #f2ede5;
+  --muted: #9a9187;
+  --line: rgb(255 255 255 / 0.08);
+  --signal: #f3b93f;
+  --signal-soft: rgb(243 185 63 / 0.12);
+  --danger: #ff8f7f;
+  --danger-soft: rgb(255 96 76 / 0.13);
+  --ok: #74d6a0;
+  --route: #38e0c8;
+  --scrim: #121010;
+  --scrim-ink: #f2ede5;
+  --scrim-muted: #9a9187;
+  --scrim-ok: #2f8a58;
+  --scrim-danger: #c0392b;
+  --gold: #f3b93f;
+  --gold-ink: #1d1404;
+  --start: #4cc38a;
+  --end: #ef5b43;
+}
+
 @theme inline {
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-start: var(--start);
+  --color-end: var(--end);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-ink: var(--ink);

@@ -21,7 +21,8 @@ const FACTS: [string, string][] = [
   ["Elevation", "HiRISE digital terrain model mosaic, 1 m per pixel"],
   ["Imagery", "HiRISE orthomosaic, down to 0.32 m per pixel near the camera"],
   ["Route grid", "1,000 × 1,000 cells of 10 m, searched with A*"],
-  ["Slope limit", "Under 20°, NASA's Artemis EVA limit (EVA-EXP-0042 Rev B), lowered for heavy loads"],
+  ["Slope limit", "Under 20° on foot, NASA's Artemis EVA limit (EVA-EXP-0042 Rev B), lowered for heavy loads"],
+  ["Rover mode", "Under 45°, an experimental simulation setting, not a tested rover capability"],
   ["Step limit", "0.30 m of local relief, the suited step height NASA tested (ICES-2025-294)"],
   ["Default load", "80 kg crew member, 104 kg suit, 20 kg payload, in Mars gravity of 3.71 m/s²"],
 ];
@@ -77,7 +78,7 @@ export default function MainMenu() {
               C.R.I.S.
             </h1>
             <p className="mt-6 animate-menu-in text-lg font-thin tracking-[0.04em] [animation-delay:150ms] sm:text-xl">
-              Celestial Research &amp; Interplanetary Simulation
+              Center Reconnaissance Interplanetary Survival
             </p>
             <p className="mt-6 max-w-sm animate-menu-in leading-relaxed text-space-muted [animation-delay:300ms]">
               A Mars exploration simulator. Plan a spacesuit walk or a rover drive across Jezero crater, on terrain

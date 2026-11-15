@@ -47,3 +47,15 @@ v2.5 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo (modelado 3D m�
 - `sim/src/rover.rs`, `sim/src/route.rs`: test con datos reales que conduce el rover por las rutas sobre el terreno nuevo; la línea de la ruta se muestrea cada 1 m.
 - `src/components/planner/SourcesFooter.tsx`: la lista de fuentes declara el relieve estimado.
 - `sim/src/rover.rs`, `sim/src/route.rs`, `sim/src/picking.rs`, `sim/src/bridge.rs`, `src/components/Planner.tsx`: arreglo del final del recorrido (el rover para sobre el destino, se queda ahí y el siguiente clic planifica desde esa posición).
+
+v2.6 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo ("subir a 45° el límite de inclinación del Rover, separado del límite EVA, y verificarlo"), Claude Code (Opus 5.5) escribió código y corrió el pipeline. Los 45° del rover son un **parámetro experimental de simulación** elegido por el equipo, no una capacidad comprobada de Perseverance.
+- `sim/src/route.rs`: `Vehicle` (`eva` | `rover`) en `RouteParams`. EVA conserva 20° (NASA), su carga y `hazard.png`. Rover: `rover_s_max_deg` 45°, carga propia `rover_payload_kg` con un modelo de carga experimental ((1025 + carga) / (1025 + 100 kg nominales)), velocidad 4,2 cm/s (NASA) y capa `hazard_phys.png`. Tests nuevos: tabla 15/25/35/44/46° × carga normal/elevada × vehículo, capa de peligro por vehículo, JSON de la web y rutas reales en ambos modos.
+- `sim/src/data.rs`, `sim/src/layers.rs`, `sim/src/rover.rs`: carga de la capa nueva, overlay de peligro del vehículo activo y test del rover en ambos modos.
+- `notebooks/jezero_pipeline.py`: `rule_labels(with_slope)` (refactor de `autolabel`, salida idéntica comprobada), etapa `fine` (rehace los intermedios de 2 m sin tocar assets; coinciden 100 % con los commiteados) y etapa `hazard_phys` → `sim/assets/jezero/hazard_phys.png`. Es un **dato derivado por código** (MLP de scikit-learn sobre datos de NASA), no generado por IA.
+- `src/lib/marsSim.ts`, `src/components/Planner.tsx`, `src/components/planner/LimitsSection.tsx`, `src/components/planner/MapOverlay.tsx`, `src/app/page.tsx`: selector Astronauta/Rover, campos por vehículo, aviso de valor experimental y textos de fuentes.
+- `public/sim/`: WASM recompilado.
+
+v2.7 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo ("rediseñar la interfaz del visor de mapa según una referencia visual, sin romper la lógica"), Claude Code (Opus 5.5) escribió código de UI. No cambia ninguna lógica del simulador ni de rutas.
+- `src/app/globals.css`: tema `.theme-hud` (panel oscuro, acento dorado) que redefine los tokens dentro del visor.
+- `src/components/Planner.tsx`: mapa a pantalla completa, panel flotante colapsable, botones Play rover / Clear fijos abajo.
+- `src/components/planner/ui.tsx` (`Collapsible`), `icons.tsx` (nuevo), `RouteSection.tsx`, `LimitsSection.tsx` (dividido en `CrewSection` y `AvoidanceSection`), `LayersSection.tsx`, `ConditionsSection.tsx`, `RawImagesSection.tsx`, `SourcesFooter.tsx`, `MapOverlay.tsx`: filas colapsables, métricas de ruta en tarjetas, pills de cámara (Orbit/Rover/Drone/Reset view) y HUD del cursor.

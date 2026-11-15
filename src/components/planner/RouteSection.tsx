@@ -1,34 +1,15 @@
 "use client";
 
-// Guided walk flow: 1 set start → 2 set end → 3 review (stats + elevation profile) → play the rover.
+// Route block of the panel: start / end cards, the route metrics grid, the safety badge and a
+// discreet disclosure with the elevation profile. Play / Clear live in the panel footer (Planner).
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import type { PickEvent, PickTarget, RouteResult } from "@/lib/marsSim";
-import { buttonCls, fmtEta, fmtLat, fmtLength, fmtLon, labelCls, primaryCls, Section } from "./ui";
+import { ChevronIcon, ShieldCheckIcon } from "./icons";
+import { fmtEta, fmtLat, fmtLength, fmtLon, labelCls } from "./ui";
 
-const DOT = { start: "#2e9e5b", end: "#d6452f" } as const;
+const DOT = { start: "var(--start)", end: "var(--end)" } as const;
 
-function Stepper({ step }: { step: 1 | 2 | 3 }) {
-  return (
-    <ol className="grid grid-cols-3 gap-1.5 font-mono text-[11px] uppercase tracking-wider">
-      {(["Set start", "Set end", "Review"] as const).map((label, i) => {
-        const n = i + 1;
-        const state = n < step ? "done" : n === step ? "current" : "todo";
-        return (
-          <li
-            key={label}
-            aria-current={state === "current" ? "step" : undefined}
-            className={`flex items-center gap-1.5 border-t-2 pt-1.5 ${state === "todo" ? "border-line text-muted" : state === "current" ? "border-signal text-ink" : "border-ok text-muted"}`}
-          >
-            <span className={state === "current" ? "text-signal" : ""}>{state === "done" ? "✓" : n}</span>
-            {label}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function EndpointButton({
+function EndpointCard({
   which,
   p,
   active,
@@ -41,33 +22,57 @@ function EndpointButton({
 }) {
   const label = which === "start" ? "Start" : "End";
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onSelect}
-      className={`flex min-h-24 w-full flex-col items-start gap-1 rounded-lg border p-3 text-left transition-[border-color,background-color] duration-150 ${active ? "border-signal bg-signal-soft" : "border-line bg-bg hover:border-ink"}`}
+    <div
+      className={`relative flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-[border-color,background-color] duration-150 ${active ? "border-signal/50 bg-signal-soft" : "border-line bg-bg"}`}
     >
-      <span className="flex w-full items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <span aria-hidden className="size-2.5 rounded-full" style={{ background: DOT[which] }} />
+      <span
+        aria-hidden
+        className="size-2.5 flex-none rounded-full ring-4 ring-white/[0.04]"
+        style={{ background: DOT[which] }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-baseline gap-2 text-[13.5px] font-medium">
           {label}
-        </span>
-        {active && <span className="font-mono text-[10px] uppercase tracking-wider text-signal">Placing</span>}
-      </span>
-      {p ? (
-        <span className="font-mono text-[11px] leading-relaxed tabular-nums">
-          {fmtLat(p.lat)}
-          <br />
-          {fmtLon(p.lon)}
-          <br />
-          <span className="text-muted">
-            {p.elevation_m.toFixed(0)} m · {p.slope_deg.toFixed(1)}°
-          </span>
-        </span>
-      ) : (
-        <span className="text-xs text-muted">{active ? "Click the terrain" : "Not set"}</span>
-      )}
-    </button>
+          {active && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-signal">
+              {p ? "Click to move" : "Placing"}
+            </span>
+          )}
+        </p>
+        {p ? (
+          <p className="truncate font-mono text-[11px] tabular-nums text-muted">
+            {fmtLat(p.lat)}, {fmtLon(p.lon)}
+            <span className="text-muted/70">
+              {" "}
+              · {p.elevation_m.toFixed(0)} m · {p.slope_deg.toFixed(1)}°
+            </span>
+          </p>
+        ) : (
+          <p className="text-[12px] text-muted">{active ? "Click the terrain" : "Not set"}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        aria-pressed={active}
+        aria-label={`${p ? "Change" : "Set"} ${label.toLowerCase()} point`}
+        onClick={onSelect}
+        className="flex-none rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-signal transition-colors hover:bg-signal-soft aria-pressed:bg-signal-soft"
+      >
+        {p ? "Change" : "Set"}
+      </button>
+    </div>
+  );
+}
+
+function Metric({ term, value, sub, warn }: { term: string; value: string; sub?: string; warn?: boolean }) {
+  return (
+    <div className="rounded-xl border border-line bg-bg px-3 py-2.5">
+      <dt className={labelCls}>{term}</dt>
+      <dd className={`mt-1 flex items-baseline gap-1.5 tabular-nums ${warn ? "text-danger" : ""}`}>
+        <span className="text-[19px] font-semibold leading-none tracking-tight">{value}</span>
+        {sub && <span className="font-mono text-[11px] text-muted">{sub}</span>}
+      </dd>
+    </div>
   );
 }
 
@@ -76,7 +81,7 @@ function Profile({ route }: { route: RouteResult }) {
   const pts = route.profile;
   if (pts.length < 2) return null;
   const W = 320;
-  const H = 88;
+  const H = 64;
   const PAD = 4;
   const hs = pts.map((q) => q.h);
   const lo = Math.min(...hs);
@@ -100,10 +105,10 @@ function Profile({ route }: { route: RouteResult }) {
         aria-label={`Elevation profile over ${fmtLength(route.length_m)}: starts at ${hs[0].toFixed(0)} m, ends at ${hs.at(-1)!.toFixed(0)} m, lowest ${lo.toFixed(0)} m, highest ${hi.toFixed(0)} m; ${route.ascent_m.toFixed(0)} m total ascent, ${route.descent_m.toFixed(0)} m total descent.`}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        className="h-22 w-full overflow-visible rounded-md border border-line bg-surface"
+        className="h-16 w-full overflow-visible rounded-lg border border-line bg-bg"
       >
-        <path d={`${line}L${W},${H}L0,${H}Z`} className="fill-route/15" />
-        <path d={line} fill="none" className="stroke-route" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path d={`${line}L${W},${H}L0,${H}Z`} className="fill-signal/10" />
+        <path d={line} fill="none" className="stroke-signal" strokeWidth="1.75" vectorEffect="non-scaling-stroke" />
         <circle cx={x0} cy={y0} r="3.5" fill={DOT.start} />
         <circle cx={x1} cy={y1} r="3.5" fill={DOT.end} />
       </svg>
@@ -115,11 +120,11 @@ function Profile({ route }: { route: RouteResult }) {
   );
 }
 
-function Stat({ term, value, warn }: { term: string; value: string; warn?: boolean }) {
+function Row({ term, value }: { term: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 text-sm">
+    <div className="flex justify-between gap-3 text-[13px]">
       <dt className="text-muted">{term}</dt>
-      <dd className={`font-mono tabular-nums ${warn ? "text-danger" : ""}`}>{value}</dd>
+      <dd className="font-mono tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -130,95 +135,110 @@ export default function RouteSection({
   target,
   onTarget,
   route,
-  playing,
-  ready,
-  onTogglePlay,
-  onClear,
 }: {
   start: PickEvent | null;
   end: PickEvent | null;
   target: PickTarget;
   onTarget: (t: PickTarget) => void;
   route: RouteResult | null;
-  playing: boolean;
-  ready: boolean;
-  onTogglePlay: () => void;
-  onClear: () => void;
 }) {
   const ok = route?.status === "ok";
   const step = !start ? 1 : !end ? 2 : 3;
   const blocked = [start, end].filter((p): p is PickEvent => !!p && !p.passable);
+  const r = ok ? route : null;
+  const rover = (route?.vehicle ?? "eva") === "rover";
 
   return (
-    <Section n="01" id="sec-route" title="Plan a walk">
-      <Stepper step={step} />
-      <p className="text-sm leading-relaxed">
-        {step === 1
-          ? "Click the terrain to place the start point."
-          : step === 2
-            ? "Now click where the walk should end."
-            : "Review the route below. Pick Start or End again to move a point."}
-      </p>
+    <section aria-labelledby="sec-route" className="space-y-3 px-4 pb-4">
+      <div className="flex items-baseline justify-between">
+        <h2 id="sec-route" className="text-[15px] font-semibold tracking-tight">
+          Route
+        </h2>
+        <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted" aria-live="polite">
+          {step === 1 ? "1/3 · place start" : step === 2 ? "2/3 · place end" : "3/3 · review"}
+        </p>
+      </div>
 
-      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Which point the next click places">
-        <EndpointButton which="start" p={start} active={target === "start"} onSelect={() => onTarget("start")} />
-        <EndpointButton which="end" p={end} active={target === "end"} onSelect={() => onTarget("end")} />
+      <div className="space-y-2" role="group" aria-label="Route points: Change picks which point the next click places">
+        <EndpointCard which="start" p={start} active={target === "start"} onSelect={() => onTarget("start")} />
+        <EndpointCard which="end" p={end} active={target === "end"} onSelect={() => onTarget("end")} />
       </div>
 
       {blocked.map((p) => (
-        <p key={p.which} role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
+        <p key={p.which} role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger">
           The {p.which} point is not walkable with the current limits ({p.slope_deg.toFixed(1)}° slope or a blocked
           cell). Move it, or raise the max slope / lower the load.
         </p>
       ))}
 
-      <div aria-live="polite" className="rounded-lg border border-line bg-bg p-3">
-        {!route ? (
-          <p className="text-sm text-muted">The safest route appears here once both points are set.</p>
-        ) : !ok ? (
-          <p className="rounded-md bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+      <div aria-live="polite" className="space-y-2">
+        {route && !ok ? (
+          <p className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] font-medium text-danger">
             No safe path with these limits. Lower the payload, raise the max slope or pick other points.
           </p>
         ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className={labelCls}>Length</p>
-                <p className="font-display text-4xl leading-none tabular-nums">{fmtLength(route.length_m)}</p>
-              </div>
-              <div>
-                <p className={labelCls}>Walking time</p>
-                <p className="font-display text-4xl leading-none tabular-nums">{fmtEta(route.eta_min)}</p>
-              </div>
-            </div>
-            <Profile route={route} />
-            <dl className="space-y-1">
-              <Stat
-                term="Max slope / allowed"
-                value={`${route.max_slope_deg.toFixed(1)}° / ${route.s_max_eff_deg.toFixed(1)}°`}
-                warn={route.max_slope_deg > route.s_max_eff_deg}
+          <>
+            <dl className="grid grid-cols-2 gap-2">
+              <Metric term="Length" value={r ? fmtLength(r.length_m) : "—"} />
+              <Metric term={rover ? "Drive time" : "Walking time"} value={r ? fmtEta(r.eta_min) : "—"} />
+              <Metric
+                term="Max slope"
+                value={r ? `${r.max_slope_deg.toFixed(1)}°` : "—"}
+                sub={r ? `/ ${r.s_max_eff_deg.toFixed(1)}°` : undefined}
+                warn={!!r && r.max_slope_deg > r.s_max_eff_deg}
               />
-              <Stat term="Ascent / descent" value={`+${route.ascent_m.toFixed(0)} m / −${route.descent_m.toFixed(0)} m`} />
-              <Stat term="Mean hazard" value={`${(route.mean_hazard * 100).toFixed(0)}%`} />
-              <Stat term="Weight factor" value={`×${route.weight_factor.toFixed(2)}`} />
+              <Metric
+                term="Climb"
+                value={r ? `+${r.ascent_m.toFixed(0)} m` : "—"}
+                sub={r ? `−${r.descent_m.toFixed(0)} m` : undefined}
+              />
             </dl>
-            <p className="border-t border-line pt-2.5 text-sm">
-              Loaded weight on Mars ={" "}
-              <strong className="font-mono font-medium tabular-nums">{(route.weight_factor * 100).toFixed(0)}%</strong>{" "}
-              of body weight on Earth.
-            </p>
-          </div>
+            {r ? (
+              <p className="flex items-center gap-2.5 rounded-xl border border-ok/25 bg-ok/10 px-3 py-2.5 text-[13px]">
+                <ShieldCheckIcon className="size-4 flex-none text-ok" />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-ok">Safest route inside limits</span>
+                  <span className="block font-mono text-[10.5px] text-muted">
+                    slope &lt; {r.s_max_eff_deg.toFixed(1)}° · step ≤ {r.rough_max_m.toFixed(2)} m · hazard{" "}
+                    {(r.mean_hazard * 100).toFixed(0)}%
+                  </span>
+                </span>
+              </p>
+            ) : (
+              <p className="rounded-xl border border-dashed border-line px-3 py-2.5 text-[12.5px] text-muted">
+                {step === 1
+                  ? "Click the terrain to place the start point."
+                  : step === 2
+                    ? "Now click where the walk should end."
+                    : "Planning the safest route…"}
+              </p>
+            )}
+          </>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={onTogglePlay} disabled={!ok || !ready} className={primaryCls}>
-          {playing ? "Pause rover" : "Play rover"}
-        </button>
-        <button type="button" onClick={onClear} disabled={!start && !end && !route} className={buttonCls}>
-          Clear
-        </button>
-      </div>
-    </Section>
+      {r && (
+        <details className="group/prof rounded-xl border border-line">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 text-[12.5px] text-muted transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
+            Elevation profile &amp; load
+            <ChevronIcon className="size-3 transition-transform group-open/prof:rotate-90" />
+          </summary>
+          <div className="space-y-3 border-t border-line px-3 py-3">
+            <Profile route={r} />
+            <dl className="space-y-1">
+              <Row term="Mean hazard" value={`${(r.mean_hazard * 100).toFixed(0)}%`} />
+              <Row term="Weight factor" value={`×${r.weight_factor.toFixed(2)}`} />
+            </dl>
+            <p className="border-t border-line pt-2 text-[12.5px] text-muted">
+              Loaded weight on Mars ={" "}
+              <strong className="font-mono font-medium tabular-nums text-ink">
+                {(r.weight_factor * 100).toFixed(0)}%
+              </strong>{" "}
+              of body weight on Earth.
+            </p>
+          </div>
+        </details>
+      )}
+    </section>
   );
 }

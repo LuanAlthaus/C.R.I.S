@@ -131,6 +131,30 @@
   {
    "layer": "ortho",
    "text": "HiRISE orthomosaic (NASA/JPL/University of Arizona) via JPL Mars Trek; colour from the Mars 2020 HiRISE RGB + CTX basemap (NASA/JPL-Caltech/University of Arizona) via Mars 2020 MMGIS, extended by grey-level matching outside its footprint; near-camera tiles from the same orthomosaic at Trek zoom 17 (~0.32 m/px)"
+  },
+  {
+   "layer": "hazard_phys",
+   "text": "Rover-mode hazard: patch labels from NASA data by fixed rules without the slope rule (written with SI, see docs/SI_USAGE.md): Mars 2020 photogeologic and in situ maps (Stack et al. 2020; Crumpler et al. 2023, CC BY 4.0), Perseverance drive path (NASA/JPL-Caltech); MLP on HiRISE DTM roughness and orthomosaic texture (no slope features); impassable = mapped ripples plus hazard-model cells not explained by slope"
   }
- ]
+ ],
+ "hazard_phys_model": {
+  "type": "MLPClassifier",
+  "labels": "nasa_rules_without_slope",
+  "classes": 2,
+  "n_labels": 4000,
+  "holdout_accuracy": 0.9,
+  "holdout": "spatial: 20 of 100 1 km tiles",
+  "holdout_confusion": [
+   [
+    336,
+    29
+   ],
+   [
+    40,
+    287
+   ]
+  ],
+  "impassable_cells": 5669,
+  "released_cells": 36527
+ }
 }

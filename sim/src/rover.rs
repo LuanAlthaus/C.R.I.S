@@ -25,11 +25,19 @@ pub struct Rover;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoverSet;
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct RoverPlayback {
     pub playing: bool,
     /// Distance travelled along the route polyline, m.
     pub s: f32,
+    /// Playback speed multiplier (UI: x1, x2, x4). Survives route changes.
+    pub speed: f32,
+}
+
+impl Default for RoverPlayback {
+    fn default() -> Self {
+        Self { playing: false, s: 0.0, speed: 1.0 }
+    }
 }
 
 pub struct RoverPlugin;
@@ -100,7 +108,7 @@ fn reset_on_route_change(
         return;
     }
     let Ok((mut tf, mut heading)) = rover.single_mut() else { return };
-    *playback = RoverPlayback::default();
+    *playback = RoverPlayback { speed: playback.speed, ..default() };
     match along(&route.polyline, 0.0) {
         Some((p, dir)) => {
             tf.translation = p;
@@ -128,7 +136,7 @@ fn advance(
     }
     let Ok((mut tf, mut heading)) = rover.single_mut() else { return };
     let length = route.result.as_ref().map_or(0.0, |r| r.length_m);
-    playback.s += (length / PLAYBACK_S).max(SIM_SPEED) * time.delta_secs();
+    playback.s += (length / PLAYBACK_S).max(SIM_SPEED) * playback.speed * time.delta_secs();
     match along(&route.polyline, playback.s) {
         Some((p, dir)) => {
             tf.translation = p;
@@ -171,7 +179,7 @@ fn settle(surface: Res<Surface>, vs: Res<VScale>, mut rover: Query<(&mut Transfo
 mod tests {
     use super::*;
     use crate::route::tests::{PAIRS, open_near};
-    use crate::route::{CostGrid, RIBBON_LIFT_M, RIBBON_STEP_M, RouteParams, plan, s_max_eff};
+    use crate::route::{CostGrid, RIBBON_LIFT_M, RIBBON_STEP_M, RouteParams, Vehicle, plan, s_max_eff};
     use crate::terrain::{NT, TILE_M};
     use std::collections::BTreeSet;
 
@@ -181,8 +189,15 @@ mod tests {
     fn routes_hold_on_the_relief_terrain() {
         let site = Site::load();
         let g = CostGrid::from_site(&site);
-        let p = RouteParams::default();
+        // EVA routes and rover-mode routes (45°, experimental) over the same ground.
+        for p in [RouteParams::default(), RouteParams { vehicle: Vehicle::Rover, ..RouteParams::default() }] {
+            drive_routes(&site, &g, p);
+        }
+    }
+
+    fn drive_routes(site: &Site, g: &CostGrid, p: RouteParams) {
         let vs = VScale(1.0);
+        eprintln!("{:?}: slope limit {:.1}°", p.vehicle, s_max_eff(&p));
         let mut ok = 0;
         eprintln!(
             "pair | length m | max tilt on the 4 m mesh / relief mesh ° | most the relief adds ° | metres tilted past the limit | relief under the rover rms / max m | route line clearance m"
