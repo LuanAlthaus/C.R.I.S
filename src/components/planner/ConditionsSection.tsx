@@ -4,7 +4,8 @@
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { NASA_LIMITS } from "@/lib/marsSim";
-import { citeCls, inputCls, labelCls, Section } from "./ui";
+import { SunIcon } from "./icons";
+import { citeCls, Collapsible, inputCls, labelCls } from "./ui";
 
 interface Donki {
   date: string;
@@ -123,9 +124,10 @@ export default function ConditionsSection() {
   const swingMax = c ? Math.max(c.mars.max_swing_c, c.earth.mean_swing_c) : 1;
   const emuPa = NASA_LIMITS.suit_pressure_kpa.emu * 1000;
   const rad = NASA_LIMITS.radiation;
+  const summary = !date || loading ? "Checking…" : donki?.error ? "Offline" : donki?.data?.alert ? "CME alert" : "No CME";
 
   return (
-    <Section n="04" id="sec-conditions" title="Conditions">
+    <Collapsible id="sec-conditions" icon={<SunIcon />} title="Conditions" summary={summary}>
       <div>
         <label htmlFor="eva-date" className={labelCls}>
           EVA date (UTC)
@@ -278,6 +280,6 @@ export default function ConditionsSection() {
           sheltered cells, not to estimate mSv.
         </p>
       </article>
-    </Section>
+    </Collapsible>
   );
 }

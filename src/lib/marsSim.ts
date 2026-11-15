@@ -14,12 +14,25 @@ export type Overlay =
   | "cost";
 export type CameraMode = "map" | "drone" | "rover";
 
+/** Who walks or drives the route (sim/src/route.rs `Vehicle`). */
+export type Vehicle = "eva" | "rover";
+
 export interface RouteParams {
+  vehicle: Vehicle;
   body_kg: number;
   suit_kg: number;
+  /** Load the walker carries (EVA mode). */
   payload_kg: number;
-  /** Suited-walking slope limit before the load factor (20° = NASA Artemis EVA limit). */
+  /** EVA: suited-walking slope limit before the load factor (20° = NASA Artemis EVA limit). */
   s_max_base_deg: number;
+  /** Rover: slope limit before the load factor. 45° is an experimental simulation value, not a tested capability. */
+  rover_s_max_deg: number;
+  /** Rover mass, kg (Perseverance: 1,025 kg). */
+  rover_kg: number;
+  /** Rover: payload it carries at the full slope limit; more lowers the limit (team assumption). */
+  rover_rated_payload_kg: number;
+  /** Load the rover carries (rover mode). */
+  rover_payload_kg: number;
   /** Cells rougher than this (DTM relief residual, m) are impassable. */
   rough_max_m: number;
   w_slope: number;
@@ -41,6 +54,7 @@ export interface LatLon {
 
 export interface RouteResult {
   status: "ok" | "no_path";
+  vehicle: Vehicle;
   length_m: number;
   eta_min: number;
   max_slope_deg: number;
@@ -110,8 +124,11 @@ export interface CameraEvent {
 export interface MarsSimApi {
   set_overlay(name: Overlay): void;
   set_camera_mode(mode: CameraMode): void;
+  /** JSON of RouteParams; unknown fields are ignored and missing ones take the sim defaults. */
   set_params(json: string): void;
   play_route(play: boolean): void;
+  /** Rover playback speed multiplier (1, 2 or 4). Missing in WASM builds older than the speed control. */
+  set_rover_speed?(speed: number): void;
   clear_route(): void;
   set_pick_target(which: PickTarget): void;
   /** Vertical exaggeration, 1–5 (default 1 = true relief). */
@@ -133,12 +150,18 @@ declare global {
 
 // Same defaults as RouteParams::default() in sim/src/route.rs.
 // suit_kg 104: NASA Mars suit mass target (NTRS 20260005410). s_max_base_deg 20: NASA Artemis EVA slope limit
-// (EVA-EXP-0042 Rev B). rough_max_m 0.30: suited step height NASA tested (ICES-2025-294).
+// (EVA-EXP-0042 Rev B). rover_s_max_deg 45: experimental simulation parameter (team), not a NASA rover rating.
+// rover_kg 1025: Perseverance mass (NASA). rough_max_m 0.30: suited step height NASA tested (ICES-2025-294).
 export const DEFAULT_PARAMS: RouteParams = {
+  vehicle: "eva",
   body_kg: 80,
   suit_kg: 104,
   payload_kg: 20,
   s_max_base_deg: 20,
+  rover_s_max_deg: 45,
+  rover_kg: 1025,
+  rover_rated_payload_kg: 100,
+  rover_payload_kg: 20,
   rough_max_m: 0.3,
   w_slope: 3,
   w_hazard: 5,
@@ -182,7 +205,8 @@ export const OVERLAY_LEGENDS: Record<Overlay, { label: string; stops: string[]; 
     label: "Hazard (rocks / rough ground)",
     stops: ["#f08a24", "#5a0f1a"],
     unit: "orange = rough (darker = worse), dark red = impassable",
-    source: "MLP classifier on HiRISE patches; labels from NASA data by fixed rules (see Sources)",
+    source:
+      "MLP classifier on HiRISE patches; labels from NASA data by fixed rules (see Sources). Rover mode uses a variant without the 20° slope rule.",
   },
   thermal: {
     label: "Thermal swing",
@@ -227,6 +251,18 @@ export const NASA_LIMITS = {
   suit_pressure_kpa: { emu: 29.6, cite: "OCHMO-TB-050 (EMU operating pressure)" },
   hydration_ml_per_h: { eva_min: 240, cite: "NASA-STD-3001 Vol. 2 [V2 11030]" },
 } as const;
+
+// Mirrors weight_factor / s_max_eff in sim/src/route.rs so the UI can show the limit before a route exists.
+export function weightFactor(p: RouteParams) {
+  return p.vehicle === "rover"
+    ? (p.rover_kg + p.rover_payload_kg) / Math.max(p.rover_kg + p.rover_rated_payload_kg, 1)
+    : ((p.body_kg + p.suit_kg + p.payload_kg) * 3.71) / (p.body_kg * 9.81);
+}
+
+export function allowedSlope(p: RouteParams) {
+  const base = p.vehicle === "rover" ? p.rover_s_max_deg : p.s_max_base_deg;
+  return base / Math.max(weightFactor(p), 1);
+}
 
 export function getSim(): MarsSimApi | null {
   return typeof window === "undefined" ? null : (window.marsSim ?? null);

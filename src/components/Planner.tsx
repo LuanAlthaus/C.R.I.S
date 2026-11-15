@@ -1,19 +1,21 @@
 "use client";
 
-// C.R.I.S shell: planner panel beside the 3D sim on desktop (380 px + canvas), stacked
-// under it on mobile. Holds the UI state the sim needs and replays it on ready.
+// C.R.I.S Map Viewer shell: full-bleed 3D sim with the planner as a floating dark panel on the left
+// (desktop) or a card under the map (mobile). Holds the UI state the sim needs and replays it on ready.
 // Code written with AI assistance (Claude / omp); see docs/SI_USAGE.md.
 import { useEffect, useState } from "react";
 import MarsSim from "@/components/MarsSim";
 import ConditionsSection from "@/components/planner/ConditionsSection";
 import LayersSection from "@/components/planner/LayersSection";
-import LimitsSection from "@/components/planner/LimitsSection";
+import { PanelIcon, PauseIcon, PlayIcon } from "@/components/planner/icons";
+import { AvoidanceSection, CrewSection } from "@/components/planner/LimitsSection";
 import MapOverlay from "@/components/planner/MapOverlay";
 import RawImagesSection, { type NearestStop } from "@/components/planner/RawImagesSection";
 import RouteSection from "@/components/planner/RouteSection";
 import SourcesFooter from "@/components/planner/SourcesFooter";
-import type { SiteMeta } from "@/components/planner/ui";
+import { buttonCls, labelCls, primaryCls, type SiteMeta } from "@/components/planner/ui";
 import {
+  allowedSlope,
   DEFAULT_PARAMS,
   getSim,
   onSimEvent,
@@ -25,11 +27,8 @@ import {
   type RouteResult,
 } from "@/lib/marsSim";
 
-// Mirrors weight_factor / s_max_eff in sim/src/route.rs so the UI can show the limit before a route exists.
-function allowedSlope(p: RouteParams) {
-  const wf = ((p.body_kg + p.suit_kg + p.payload_kg) * 3.71) / (p.body_kg * 9.81);
-  return p.s_max_base_deg / Math.max(wf, 1);
-}
+const ROVER_SPEEDS = [1, 2, 4] as const;
+type RoverSpeed = (typeof ROVER_SPEEDS)[number];
 
 export default function Planner() {
   const [open, setOpen] = useState(true);
@@ -48,6 +47,7 @@ export default function Planner() {
   const [near, setNear] = useState<NearestStop | null>(null);
   const [sol, setSol] = useState(1);
   const [keysActive, setKeysActive] = useState(false);
+  const [roverSpeed, setRoverSpeed] = useState<RoverSpeed>(1);
 
   useEffect(() => {
     fetch("/data/jezero/meta.json")
@@ -67,8 +67,9 @@ export default function Planner() {
         sim?.set_params(JSON.stringify(params));
         sim?.set_vertical_scale(vscale);
         sim?.set_show_traverse(showTraverse);
+        sim?.set_rover_speed?.(roverSpeed);
       }),
-    [camera, overlay, params, vscale, showTraverse],
+    [camera, overlay, params, vscale, showTraverse, roverSpeed],
   );
 
   useEffect(() => {
@@ -88,7 +89,14 @@ export default function Planner() {
       setRoute(r);
       setPlaying(false); // the sim rewinds the rover on every new route
     });
-    const offStopped = onSimEvent("mars-rover-stopped", () => setPlaying(false));
+    // The sim makes the point the rover just reached its new start and clears the end: the rover
+    // stays there and the next click picks where it goes from here.
+    const offStopped = onSimEvent<PickEvent>("mars-rover-stopped", (p) => {
+      setPlaying(false);
+      setStart(p);
+      setEnd(null);
+      setRoute(null);
+    });
     return () => {
       offPick();
       offTarget();
@@ -117,6 +125,10 @@ export default function Planner() {
     setShowTraverse(v);
     getSim()?.set_show_traverse(v);
   };
+  const changeRoverSpeed = (s: RoverSpeed) => {
+    setRoverSpeed(s);
+    getSim()?.set_rover_speed?.(s);
+  };
   const togglePlay = () => {
     getSim()?.play_route(!playing);
     setPlaying(!playing);
@@ -130,52 +142,48 @@ export default function Planner() {
     setPlaying(false);
   };
 
+  const ok = route?.status === "ok";
+
   return (
-    <div className="flex h-dvh flex-col-reverse overflow-hidden bg-bg lg:flex-row">
+    // theme-hud: the viewer is always the dark mission panel, whatever the colour scheme.
+    // Mobile: map on top, panel card under it. Desktop: full-bleed map, panel floating on the left.
+    <div className="theme-hud relative flex h-dvh flex-col-reverse overflow-hidden bg-bg text-ink lg:block">
       <aside
         aria-label="Planner"
-        className={`z-10 flex min-h-0 flex-col border-t border-line bg-surface lg:border-r lg:border-t-0 ${open ? "flex-1 lg:w-[380px] lg:flex-none" : "flex-none"}`}
+        className={`relative z-20 m-2 mt-0 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-surface/95 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.85)] backdrop-blur-xl lg:absolute lg:left-4 lg:top-4 lg:m-0 lg:w-[360px] ${open ? "flex-1 lg:bottom-4" : "flex-none"}`}
       >
-        <header className="flex h-14 flex-none items-center justify-between gap-3 border-b border-line pl-4 pr-2">
-          <div className={`min-w-0 ${open ? "" : "lg:hidden"}`}>
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-signal">Jezero crater · EVA</p>
-            <h1 className="truncate font-display text-[1.45rem] leading-none">C.R.I.S</h1>
+        <header className="flex flex-none items-center justify-between gap-3 px-4 pb-3 pt-3.5">
+          <div className="min-w-0">
+            <h1 className="truncate text-[19px] font-semibold leading-tight tracking-[0.16em]">C.R.I.S.</h1>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
+              <span aria-hidden className="size-1.5 rounded-full bg-gold shadow-[0_0_8px_var(--gold)]" />
+              Jezero crater, Mars
+            </p>
           </div>
           <button
             type="button"
             aria-expanded={open}
             aria-controls="planner-body"
+            aria-label={open ? "Collapse planner panel" : "Expand planner panel"}
+            title={open ? "Collapse" : "Expand"}
             onClick={() => setOpen(!open)}
-            className="inline-flex min-h-11 min-w-11 flex-none items-center justify-center gap-1.5 rounded-md px-3 font-mono text-[11px] uppercase tracking-wider text-muted hover:text-ink"
+            className="grid size-9 flex-none place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-white/[0.06] hover:text-ink"
           >
-            <svg
-              aria-hidden
-              viewBox="0 0 12 12"
-              className={`size-3 transition-transform ${open ? "lg:rotate-90" : "rotate-180 lg:-rotate-90"}`}
-            >
-              <path d="M2 4.5 6 8.5l4-4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-            {open ? "Hide" : "Show planner"}
+            <PanelIcon className={`size-4 transition-transform ${open ? "" : "rotate-180"}`} />
           </button>
         </header>
 
         {/* relative: absolutely positioned sr-only nodes must scroll with the body, not overflow the aside. */}
-        <div id="planner-body" hidden={!open} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <RouteSection
-            start={start}
-            end={end}
-            target={target}
-            onTarget={selectTarget}
-            route={route}
-            playing={playing}
-            ready={ready}
-            onTogglePlay={togglePlay}
-            onClear={clearRoute}
-          />
-          <LimitsSection
+        <div
+          id="planner-body"
+          hidden={!open}
+          className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:rgb(255_255_255/0.15)_transparent] [scrollbar-width:thin]"
+        >
+          <RouteSection start={start} end={end} target={target} onTarget={selectTarget} route={route} />
+          <CrewSection params={params} onParams={setParams} allowedSlope={allowedSlope(params)} />
+          <AvoidanceSection
             params={params}
             onParams={setParams}
-            allowedSlope={allowedSlope(params)}
             hazardPending={meta?.hazard_model.type === "none"}
           />
           <LayersSection
@@ -192,7 +200,48 @@ export default function Planner() {
           <ConditionsSection />
           <RawImagesSection sol={sol} onSol={setSol} near={near} />
           <SourcesFooter meta={meta} />
+          <p className="border-t border-line px-4 py-3 text-[11px] text-muted">Data: NASA. Not endorsed by NASA.</p>
         </div>
+
+        <footer hidden={!open} className="flex-none space-y-2.5 border-t border-line p-3">
+          <fieldset className="flex items-center justify-between gap-3 px-1">
+            <legend className="sr-only">Rover playback speed</legend>
+            <span aria-hidden className={labelCls}>
+              Rover speed
+            </span>
+            <div className="flex gap-1 rounded-full border border-line bg-bg p-0.5">
+              {ROVER_SPEEDS.map((s) => (
+                <label key={s} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="rover-speed"
+                    value={s}
+                    checked={roverSpeed === s}
+                    onChange={() => changeRoverSpeed(s)}
+                    className="peer sr-only"
+                  />
+                  <span className="flex min-h-8 min-w-11 items-center justify-center rounded-full px-3 font-mono text-[12px] tabular-nums text-muted transition-colors hover:text-ink peer-checked:bg-signal peer-checked:font-semibold peer-checked:text-gold-ink peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-signal">
+                    ×{s}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <button type="button" onClick={togglePlay} disabled={!ok || !ready} className={`${primaryCls} min-h-12`}>
+              {playing ? <PauseIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
+              {playing ? "Pause rover" : "Play rover"}
+            </button>
+            <button
+              type="button"
+              onClick={clearRoute}
+              disabled={!start && !end && !route}
+              className={`${buttonCls} min-h-12 px-5`}
+            >
+              Clear
+            </button>
+          </div>
+        </footer>
       </aside>
 
       {/* Size depends only on breakpoint + panel state, never on the canvas contents. */}
@@ -200,9 +249,9 @@ export default function Planner() {
         aria-label="3D terrain view"
         onFocus={(e) => setKeysActive(e.target.id === "mars-canvas")}
         onBlur={() => setKeysActive(false)}
-        className={`relative min-h-0 min-w-0 ${open ? "h-[46dvh] flex-none" : "flex-1"} lg:h-auto lg:flex-1`}
+        className={`relative min-h-0 min-w-0 ${open ? "h-[46dvh] flex-none" : "flex-1"} lg:absolute lg:inset-0 lg:h-auto`}
       >
-        <MarsSim className="has-[canvas:focus-visible]:outline-2 has-[canvas:focus-visible]:-outline-offset-4 has-[canvas:focus-visible]:outline-signal" />
+        <MarsSim className="bg-[#0b0908] has-[canvas:focus-visible]:outline-2 has-[canvas:focus-visible]:-outline-offset-4 has-[canvas:focus-visible]:outline-signal" />
         <MapOverlay
           ready={ready}
           camera={camera}
@@ -210,6 +259,7 @@ export default function Planner() {
           target={target}
           keysActive={keysActive}
           route={route}
+          panelOpen={open}
         />
       </main>
     </div>

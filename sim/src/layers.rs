@@ -113,7 +113,8 @@ pub fn compose(overlay: Overlay, site: &Site, grid: &CostGrid, p: &RouteParams) 
             },
             Overlay::Texture => px(lerp(NAVY, ORANGE, v(&site.texture)), ALPHA),
             Overlay::Rocks => px(RED, (v(&site.rocks) * 200.0) as u8),
-            Overlay::Hazard => match site.hazard[i] {
+            // The active vehicle's hazard layer (EVA: hazard.png, rover: hazard_phys.png).
+            Overlay::Hazard => match grid.hazard_at(i, p) {
                 255 => px(BLOCKED, 220),
                 h => px(ORANGE, (h as u32 * 200 / 254) as u8),
             },
@@ -203,7 +204,7 @@ fn recompose(
     mut vis: Query<&mut Visibility, With<OverlayMesh>>,
 ) {
     let Some(assets) = assets else { return };
-    let params_matter = matches!(*overlay, Overlay::Slope | Overlay::Rough | Overlay::Cost);
+    let params_matter = matches!(*overlay, Overlay::Slope | Overlay::Rough | Overlay::Hazard | Overlay::Cost);
     if !overlay.is_changed() && !(params.is_changed() && params_matter) {
         return;
     }

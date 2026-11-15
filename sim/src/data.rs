@@ -65,7 +65,10 @@ pub struct Site {
     pub texture: Vec<u8>,
     /// Rock-covered fraction (talus / exposed blocky bedrock, Stack et al. 2020), 0..255.
     pub rocks: Vec<u8>,
+    /// EVA hazard model (0..254 rough share, 255 impassable; includes the slope >= 20° rule).
     pub hazard: Vec<u8>,
+    /// Rover hazard: the same ground without the slope rule (notebooks/jezero_pipeline.py `hazard_phys`).
+    pub hazard_phys: Vec<u8>,
     pub thermal: Vec<u8>,
     pub radiation: Vec<u8>,
     pub geology: Vec<u8>,
@@ -99,6 +102,7 @@ impl Site {
             texture: luma8(include_bytes!("../assets/jezero/texture.png")),
             rocks: luma8(include_bytes!("../assets/jezero/rocks.png")),
             hazard: luma8(include_bytes!("../assets/jezero/hazard.png")),
+            hazard_phys: luma8(include_bytes!("../assets/jezero/hazard_phys.png")),
             thermal: luma8(include_bytes!("../assets/jezero/thermal.png")),
             radiation: luma8(include_bytes!("../assets/jezero/radiation.png")),
             geology: luma8(include_bytes!("../assets/jezero/geology.png")),

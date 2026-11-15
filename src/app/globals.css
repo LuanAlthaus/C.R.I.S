@@ -21,6 +21,12 @@
   --scrim-muted: #9ea5b3;
   --scrim-ok: #2f7d4f;
   --scrim-danger: #b42318;
+  /* Main Menu: always dark, whatever the colour scheme. Warm accents taken from the Viking mosaic. */
+  --space: #090807;
+  --space-ink: #ffffff;
+  --space-muted: #a39b94;
+  --space-line: #2a2623;
+  --mars: #e0703c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -40,7 +46,37 @@
   }
 }
 
+/* Map Viewer "mission panel": always dark, whatever the colour scheme. Redefines the planner tokens
+   inside the viewer, so every section inherits the look. Charcoal-brown panel, gold accent. */
+.theme-hud {
+  color-scheme: dark;
+  --bg: #1c1915;
+  --surface: #121010;
+  --ink: #f2ede5;
+  --muted: #9a9187;
+  --line: rgb(255 255 255 / 0.08);
+  --signal: #f3b93f;
+  --signal-soft: rgb(243 185 63 / 0.12);
+  --danger: #ff8f7f;
+  --danger-soft: rgb(255 96 76 / 0.13);
+  --ok: #74d6a0;
+  --route: #38e0c8;
+  --scrim: #121010;
+  --scrim-ink: #f2ede5;
+  --scrim-muted: #9a9187;
+  --scrim-ok: #2f8a58;
+  --scrim-danger: #c0392b;
+  --gold: #f3b93f;
+  --gold-ink: #1d1404;
+  --start: #4cc38a;
+  --end: #ef5b43;
+}
+
 @theme inline {
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-start: var(--start);
+  --color-end: var(--end);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-ink: var(--ink);
@@ -57,9 +93,19 @@
   --color-scrim-muted: var(--scrim-muted);
   --color-scrim-ok: var(--scrim-ok);
   --color-scrim-danger: var(--scrim-danger);
+  --color-space: var(--space);
+  --color-space-ink: var(--space-ink);
+  --color-space-muted: var(--space-muted);
+  --color-space-line: var(--space-line);
+  --color-mars: var(--mars);
   --font-sans: var(--font-plex-sans);
   --font-mono: var(--font-plex-mono);
   --font-display: var(--font-display);
+  /* SF Pro where the system has it; Aalto is not licensed for the web, so a condensed web face stands in. */
+  --font-menu: "SF Pro Display", "SF Pro", -apple-system, BlinkMacSystemFont, var(--font-inter), Arial, sans-serif;
+  --font-menu-display: "Aalto", var(--font-antonio), "Arial Narrow", sans-serif;
+  --animate-menu-in: menu-in 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-status: status 2.4s ease-in-out infinite;
 }
 
 body {
@@ -81,6 +127,14 @@ body {
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
+}
+
+/* Main Menu entrance: one staggered reveal on load. Without animation the elements are simply visible. */
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(14px); }
+}
+@keyframes status {
+  50% { opacity: 0.35; }
 }
 
 @media (prefers-reduced-motion: reduce) {

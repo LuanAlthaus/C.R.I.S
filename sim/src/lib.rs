@@ -8,6 +8,7 @@ pub mod data;
 pub mod input;
 pub mod layers;
 pub mod picking;
+pub mod relief;
 pub mod rover;
 pub mod route;
 pub mod terrain;

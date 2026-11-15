@@ -1,13 +1,13 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-15 10:45 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-15 12:00 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
 2. Toolchain: `source ~/.cargo/env` (Rust 1.97.1 + wasm32 + wasm-bindgen-cli 0.2.130), `corepack pnpm`, Python en `.venv` o `uv run --with ...`.
 3. Dev server: `corepack pnpm dev` en :3000 (comprobar con `ss -ltnp | grep 3000` antes; no lanzar dos).
 4. No correr `pnpm build` y el build de Rust a la vez (OOM). `cargo test` y el build wasm comparten `../mars_sim_target` (lock: uno espera al otro). `wasm-opt` vía npx tarda ~6 min.
-5. Metodología del usuario: delegar la recolección de información (lectura e investigación) a subagentes rápidos (`scout`/`sonic`; el usuario pidió Haiku, pero `task.perCallModel` está apagado y se usa el modelo configurado de cada agente) que reportan en español; el agente principal edita.
+5. Metodología del usuario: delegar la recolección de información (lectura e investigación) a subagentes rápidos que reportan en español; el agente principal edita. Para usar Haiku hay que poner, solo en la sesión, `cfg://modelRoles` con `"smol":"anthropic/claude-haiku-4-5"` y `cfg://task/perCallModel` en `on`; después `task` acepta `model: "anthropic/claude-haiku-4-5"` con el agente `scout`. Comprobar las cifras que traen: en la sesión del relieve dieron mal el azimut del sol y el tamaño de las dunas.
 6. Pruebas en navegador: `uv run -q --with playwright --with pillow --with numpy python <script>` con `executable_path` apuntando a `~/.cache/ms-playwright/chromium_headless_shell-*/…/chrome-headless-shell` (el Playwright nuevo de `uv` pide el build 1255, que no está instalado; el 1243 sí). Usa la GPU Intel (`--use-angle=gl-egl --ignore-gpu-blocklist`, ~32–60 fps). Con swiftshader el sim va a ~1 fps y los arrastres se leen como clics.
 
 ## Pedidos del usuario (sesión 15:00)
@@ -83,11 +83,46 @@ Pedido: "texturas de muy baja calidad en Rover y Drone; verificar que las rutas 
 - Navegador (Intel UHD, ruta de prueba de 3,05 km): el detalle llega a 14 chunks y 4 con z17; 40–48 fps; sin errores de consola. La desviación de luminancia del suelo cercano pasa de 1,4 a 14,0 en Rover y de 29,4 a 32,5 en Drone. El botón queda centrado sobre el pin (dx 0 px), el popover se abre y entra en la vista, Escape devuelve el foco, sigue al pin al arrastrar y se oculta al girar el dron. Ruta de prueba contra la base: +330 m (12 %), pendiente 16° → 14°, rugosidad 0,30 → 0,20 m, peligro medio 40 % → 26 %; la línea recta cruza 9 celdas prohibidas.
 - Límite que queda: a 11 m de cámara, 0,5 m/px todavía se ve suave; el grano agrega textura, pero no el detalle de rocas. El tonemapping (desatura los claros) no se tocó.
 
+## Hecho (sesión 11:00–12:00 del 15 nov, rama `kaz-textures-3D-renew`)
+Pedido: "mejorar el modelado 3D en base a las texturas para que sea realista y similar a Marte; comprobar si funcionan las rutas con las nuevas características 3D del terreno; rama `kaz-textures-3D-renew`; Haiku para leer e investigar".
+- **Hallazgo:** el DTM HiRISE no tiene más forma que la malla de 4 m. Sus postes de 1 m (ya en caché, `data/raw/jezero/dem_rows_8313_18314.bin`; ojo: 1,0542 columnas por metro, es equirectangular con latitud de referencia 0) difieren de la malla en 3–6 cm RMS. El detalle que falta solo está en la imagen.
+- `sim/src/relief.rs` (nuevo): fotoclinometría sobre la ortofoto z17. El mosaico está iluminado desde el oeste (azimut ≈275°, ajustado por regresión del brillo contra la pendiente del DTM en 10 teselas). El brillo relativo da la pendiente hacia el este (`SLOPE_PER_BRIGHTNESS = 0,2`); se integra de oeste a este con olvido de 8 m, se mezclan filas vecinas (sin eso quedan rayas este-oeste que inclinaban el rover hasta 16°), se quita la deriva, se limita a ±0,6 m y se lleva a cero en el borde del chunk. Es una **estimación visual**: correlación con el DTM de 0,26 en la banda de 6–30 m.
+- `terrain.rs`: el nivel cercano (`Sharp`) ahora cambia también la malla: 501² vértices a 2 m con ese relieve (`sharp_heights`). `Lod::Detail` guarda la malla y las alturas de 4 m para volver. `Surface` lee el tamaño de la rejilla de cada chunk, así que rover, cámara, pines y línea de ruta siguen el relieve sin cambios. El nivel cercano se carga a menos de 150 m y se suelta a 300 m (antes 400/700): con 4 mallas de 2 m el fps caía a la mitad. Se quitó `ortho2_dist_m` de `meta.json` y del pipeline (nadie lo leía y había quedado viejo).
+- `route.rs`: la línea de la ruta se muestrea cada 1 m (`RIBBON_STEP_M`), antes cada 4 m.
+- `SourcesFooter.tsx`: la lista de fuentes declara el relieve estimado.
+- **Rutas sobre el terreno nuevo** (`cargo test --lib` 21/21; test `rover::tests::routes_hold_on_the_relief_terrain`, con las teselas reales y la misma función `pose` del rover, muestreando cada 0,5 m):
+
+  |Par (fila, col)|Inclinación máx. del rover, malla 4 m / con relieve (°)|Lo más que suma el relieve (°)|Metros por encima de 20°|Relieve bajo el rover, RMS / máx. (m)|Despeje mín. de la línea (m)|
+  |---|---|---|---|---|---|
+  |(100,100)→(300,400)|18,7 / 21,3|5,7|2,0|0,06 / 0,34|0,109|
+  |(500,500)→(650,700)|13,3 / 12,6|6,3|0|0,06 / 0,32|0,099|
+  |(200,800)→(450,650)|5,7 / 8,6|5,1|0|0,04 / 0,21|0,130|
+  |(900,900)→(700,750)|9,6 / 10,5|5,3|0|0,05 / 0,29|0,123|
+  |(50,500)→(250,520)|4,5 / 8,4|5,5|0|0,04 / 0,38|0,135|
+  |(500,50)→(520,300)|17,2 / 17,1|6,6|0|0,07 / 0,42|0,108|
+  |(350,350)→(500,600)|16,8 / 22,1|6,8|4,5|0,06 / 0,44|0,102|
+
+  Sobre la malla del DTM el rover nunca pasa de 20°. Con el relieve estimado, 2 de 7 rutas pasan de 20° en tramos de 2 y 4,5 m (hasta 22,1°). El planificador no ve ese relieve: sigue usando las capas del DTM. La línea de la ruta nunca queda bajo el suelo.
+- Navegador (Intel UHD, misma ruta de 3,06 km con el wasm anterior y el nuevo): sin errores de consola y el rover llega al final en los dos. El relieve se ve como lomas suaves donde la imagen tiene sombreado (final de la ruta, vista Drone); en la planicie lisa del inicio casi no cambia nada. La textura sigue igual de borrosa de cerca: esto agrega forma, no nitidez.
+
+  |Medida|Antes|Nivel cercano a 400 m|Nivel cercano a 150 m (queda así)|
+  |---|---|---|---|
+  |fps Rover, quieto|39|18,6|33|
+  |fps Rover, andando|27|21,8|28,8|
+  |fps Drone|28,6|20|34,2|
+  |Chunks con malla de 2 m al inicio|0|4|2|
+
+- Probado y descartado: sacar el terreno del pase de sombras (`NotShadowCaster`) no cambió el fps (19,6), así que se revirtió.
+- GitHub: `origin/kaz` y `origin/main` quedaron en `1150335` (push por SSH del 15 nov, antes de esta rama). `kaz-textures-3D-renew` es local: no se subió.
+- **Bug del final del recorrido** (pedido a mitad de sesión: "no se detiene exactamente ahí; al terminar se debe quedar ahí y se debe poder elegir otro punto desde su posición actual"). Causa: la línea de la ruta pasaba por los centros de celda (el último quedaba hasta ~7 m del pin) y `advance` dejaba al rover un cuadro antes del final. Arreglo: `route::route_line` hace que la línea empiece y termine en los puntos clicados; al llegar, `rover::advance` pone al rover sobre el destino, lo convierte en el nuevo inicio (`ends.start = ends.end.take()`), deja el modo de colocación en END y emite `mars-rover-stopped` con el mismo JSON que un `mars-pick` de inicio. `Planner.tsx` copia eso: inicio = punto alcanzado, fin y ruta vacíos. El siguiente clic planifica desde donde quedó el rover. Se borró `rewind_if_finished` (ya no hay ruta terminada que rebobinar). Test nuevo: `route_line_starts_and_ends_on_the_clicked_points`.
+  Navegador: la parada queda a 0,0 m del destino; tras llegar, la tarjeta Start muestra el destino, End queda en "Click the terrain" y Play se deshabilita; el pin verde aparece sobre el rover; el segundo tramo (14 m) sale a 0,0 m de donde paró y termina a 0,0 m del segundo destino. fps con este build: Rover quieto 35, andando 28, Drone 37 (una medición de 15,6 en el build anterior fue ruido).
+
 ## Siguiente
 1. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`. (Hecho 17:35 del 14 nov: rama publicada, `bbd8411`.)
 2. Si el grano se ve demasiado fuerte o se nota el patrón de 8 m, ajustar solo `GRAIN_STRENGTH` (0,3–0,8) en `terrain.rs`.
-3. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
-4. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
+3. Relieve: la amplitud es una sola constante, `SLOPE_PER_BRIGHTNESS` en `sim/src/relief.rs`. 0,2 es el valor ajustado contra el DTM; 0,6 sería una superficie de Lambert pura (más visible, pero exagera donde cambia el albedo y el rover pasaría de 20° en más tramos). Para que se vea "Marte" de cerca faltan rocas y detalle de menos de 2 m, que no salen de datos orbitales: habría que sintetizarlos y declararlo.
+4. Cuando llegue el mapa real de Marte del usuario: integrarlo (pipeline/terreno) manteniendo los controles estilo Google Maps.
+5. Con el equipo (decisión de diseño, no de la IA): qué unidades geológicas cuentan como roca y su peso, margen bajo 20°, etiquetar hazard. Subagentes: `JezeroRockData` y `TrekRealism` (resultados en esta sesión) — HiRISE COLOR del PDS solo cubre una franja de ~1,2 km; Mars Rover Photos API está muerta (usar el feed raw_images de mars.nasa.gov); sol con Horizons (`SITE_COORD` con longitud este negativa) o fórmulas Mars24.
 
 ## Pendiente del equipo (humano)
 - Opcional: etiquetar ≥150 parches (≥10 por clase) en `notebooks/labels/jezero_patches.csv` con las hojas de `data/processed/jezero/label_sheets/`. Con eso, `hazard` usa las etiquetas del equipo en vez de las de `autolabel`. Las reglas permiten datos generados con SI si se declaran (README + `SI_USAGE.md` + `meta.json`).

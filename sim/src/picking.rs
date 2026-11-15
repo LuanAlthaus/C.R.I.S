@@ -248,6 +248,16 @@ fn point_json(site: &Site, grid: &Grid, params: &RouteParams, p: Vec3) -> serde_
     })
 }
 
+/// `mars-pick` payload for `p` becoming the `which` ("start" / "end") point.
+pub fn pick_json(site: &Site, grid: &Grid, params: &RouteParams, p: Vec3, which: &str) -> String {
+    let mut json = point_json(site, grid, params, p);
+    json["which"] = which.into();
+    let near = site.nearest_waypoint(p.x, p.z, WAYPOINT_RADIUS_M);
+    json["nearest_sol"] = near.map(|n| n.0).into();
+    json["nearest_sol_dist_m"] = near.map(|n| n.1.round()).into();
+    json.to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn pick(
     pointer: Res<Pointer>,
@@ -275,12 +285,7 @@ fn pick(
             "end"
         }
     };
-    let mut json = point_json(&site, &grid, &params, p);
-    json["which"] = which.into();
-    let near = site.nearest_waypoint(p.x, p.z, WAYPOINT_RADIUS_M);
-    json["nearest_sol"] = near.map(|n| n.0).into();
-    json["nearest_sol_dist_m"] = near.map(|n| n.1.round()).into();
-    crate::bridge::emit("mars-pick", json.to_string());
+    crate::bridge::emit("mars-pick", pick_json(&site, &grid, &params, p, which));
 }
 
 #[allow(clippy::too_many_arguments)]

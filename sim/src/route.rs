@@ -1,4 +1,5 @@
-//! EVA route planner: A* over the 10 m site grid that respects a load-adjusted slope limit.
+//! Route planner: A* over the 10 m site grid that respects a load-adjusted slope limit. Two modes share it:
+//! a suited walker (EVA, NASA limits) and the rover (an experimental simulation limit, see `Vehicle`).
 //! Core functions are plain Rust (no Bevy types) and unit-tested below.
 
 use bevy::prelude::*;
@@ -11,6 +12,8 @@ pub const G_MARS: f32 = 3.71;
 pub const G_EARTH: f32 = 9.81;
 // shortcut: planning estimate, no NASA source; replace if team finds one
 pub const BASE_SPEED_MPS: f32 = 1.0;
+/// Perseverance top speed on flat hard ground: 0.1 mph = 152 m/h (NASA Mars 2020 rover facts).
+pub const ROVER_SPEED_MPS: f32 = 0.042;
 // shortcut: planning estimate, no NASA source; replace if team finds one
 const SLOPE_SLOWDOWN: f32 = 0.6;
 /// Planner cell size = site grid cell.
@@ -18,15 +21,37 @@ pub const STEP_M: f32 = CELL_M;
 const DIAG_M: f32 = STEP_M * std::f32::consts::SQRT_2;
 const PROFILE_POINTS: usize = 100;
 
+/// Who walks or drives the route: picks the slope limit, the load model, the speed and the hazard layer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Vehicle {
+    /// Suited astronaut on foot: NASA EVA limits, hazard.png.
+    #[default]
+    Eva,
+    /// The rover: `rover_s_max_deg`, hazard_phys.png (ground hazard without the EVA slope rule).
+    Rover,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, Resource)]
 #[serde(default)]
 pub struct RouteParams {
+    pub vehicle: Vehicle,
     pub body_kg: f32,
     pub suit_kg: f32,
+    /// Load the walker carries (EVA mode), kg.
     pub payload_kg: f32,
-    /// 20°: NASA's suited-walking slope limit for Artemis (EVA-EXP-0042 Rev B; Artemis III site rule "< 20°").
+    /// EVA: 20°, NASA's suited-walking slope limit for Artemis (EVA-EXP-0042 Rev B; Artemis III site rule "< 20°").
     /// NASA has no Mars-specific value; the load factor below can only lower it.
     pub s_max_base_deg: f32,
+    /// Rover: 45°, an experimental simulation parameter chosen by the team. It is NOT a tested capability of
+    /// Perseverance; the load factor below can only lower it.
+    pub rover_s_max_deg: f32,
+    /// Rover mass, kg: Perseverance 1,025 kg (NASA Mars 2020 rover facts).
+    pub rover_kg: f32,
+    /// Rover: extra load it carries at the full slope limit; more lowers the limit. Team assumption, no NASA source.
+    pub rover_rated_payload_kg: f32,
+    /// Load the rover carries (rover mode), kg.
+    pub rover_payload_kg: f32,
     /// Cells whose relief residual (DTM roughness, m) exceeds this are impassable. 0.30 m: suited step height
     /// NASA found acceptable (ICES-2025-294, 30.5 cm), below Perseverance's 40 cm obstacle limit.
     pub rough_max_m: f32,
@@ -45,10 +70,15 @@ pub struct RouteParams {
 impl Default for RouteParams {
     fn default() -> Self {
         Self {
+            vehicle: Vehicle::Eva,
             body_kg: 80.0,
             suit_kg: 104.0,
             payload_kg: 20.0,
             s_max_base_deg: 20.0,
+            rover_s_max_deg: 45.0,
+            rover_kg: 1025.0,
+            rover_rated_payload_kg: 100.0,
+            rover_payload_kg: 20.0,
             rough_max_m: 0.30,
             w_slope: 3.0,
             w_hazard: 5.0,
@@ -61,14 +91,36 @@ impl Default for RouteParams {
     }
 }
 
-/// Loaded weight on Mars as a fraction of the walker's body weight on Earth.
+/// Load factor; above 1 it lowers the slope limit and the speed.
+/// EVA: loaded weight on Mars as a fraction of the walker's body weight on Earth.
+/// Rover: loaded mass as a fraction of the rover with its rated payload (an experimental model).
 pub fn weight_factor(p: &RouteParams) -> f32 {
-    (p.body_kg + p.suit_kg + p.payload_kg) * G_MARS / (p.body_kg * G_EARTH)
+    match p.vehicle {
+        Vehicle::Eva => (p.body_kg + p.suit_kg + p.payload_kg) * G_MARS / (p.body_kg * G_EARTH),
+        Vehicle::Rover => (p.rover_kg + p.rover_payload_kg) / (p.rover_kg + p.rover_rated_payload_kg).max(1.0),
+    }
 }
 
-/// Allowed slope shrinks when the load on Mars exceeds the walker's Earth body weight.
+/// The vehicle's slope limit before the load factor.
+pub fn s_max_base(p: &RouteParams) -> f32 {
+    match p.vehicle {
+        Vehicle::Eva => p.s_max_base_deg,
+        Vehicle::Rover => p.rover_s_max_deg,
+    }
+}
+
+/// Allowed slope: the vehicle's limit, lowered when the load factor exceeds 1.
 pub fn s_max_eff(p: &RouteParams) -> f32 {
-    p.s_max_base_deg / weight_factor(p).max(1.0)
+    s_max_base(p) / weight_factor(p).max(1.0)
+}
+
+/// Flat-ground speed with this load, m/s.
+pub fn flat_speed(p: &RouteParams) -> f32 {
+    let base = match p.vehicle {
+        Vehicle::Eva => BASE_SPEED_MPS,
+        Vehicle::Rover => ROVER_SPEED_MPS,
+    };
+    base / weight_factor(p).max(1.0)
 }
 
 pub struct CostGrid {
@@ -77,7 +129,10 @@ pub struct CostGrid {
     rough: Vec<f32>,
     texture: Vec<u8>,
     rocks: Vec<u8>,
+    /// EVA hazard (hazard.png): its 255 cells include the slope >= 20° rule.
     hazard: Vec<u8>,
+    /// Rover hazard (hazard_phys.png): the ground itself; slope is left to the rover's own limit.
+    hazard_phys: Vec<u8>,
     thermal: Vec<u8>,
     rad: Vec<u8>,
 }
@@ -92,15 +147,24 @@ impl CostGrid {
             texture: site.texture.clone(),
             rocks: site.rocks.clone(),
             hazard: site.hazard.clone(),
+            hazard_phys: site.hazard_phys.clone(),
             thermal: site.thermal.clone(),
             rad: site.radiation.clone(),
         }
     }
 
+    /// Hazard value of cell `i` for this vehicle (0..254 = rough share, 255 = impassable).
+    pub fn hazard_at(&self, i: usize, p: &RouteParams) -> u8 {
+        match p.vehicle {
+            Vehicle::Eva => self.hazard[i],
+            Vehicle::Rover => self.hazard_phys[i],
+        }
+    }
+
     /// Which hard limits block cell `i`: (too steep, too rough, flagged impassable by the hazard model).
     pub fn limits_hit(&self, i: usize, p: &RouteParams) -> (bool, bool, bool) {
-        // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked.
-        (self.slope[i] >= s_max_eff(p), self.rough[i] > p.rough_max_m, self.hazard[i] == 255)
+        // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked (both vehicles).
+        (self.slope[i] >= s_max_eff(p), self.rough[i] > p.rough_max_m, self.hazard_at(i, p) == 255)
     }
 
     /// Cost multiplier for entering cell `i`; `None` = impassable.
@@ -114,7 +178,7 @@ impl CostGrid {
                 + p.w_rough * self.rough[i] / p.rough_max_m.max(1e-3)
                 + p.w_texture * self.texture[i] as f32 / 255.0
                 + p.w_rocks * self.rocks[i] as f32 / 255.0
-                + p.w_hazard * self.hazard[i] as f32 / 254.0
+                + p.w_hazard * self.hazard_at(i, p) as f32 / 254.0
                 + p.w_thermal * self.thermal[i] as f32 / 255.0
                 + p.w_rad * self.rad[i] as f32 / 255.0,
         )
@@ -193,7 +257,7 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
     )?;
 
     let s_eff = s_max_eff(p);
-    let speed = BASE_SPEED_MPS / weight_factor(p).max(1.0);
+    let speed = flat_speed(p);
     let (mut length_m, mut eta_s) = (0.0, 0.0);
     for w in cells.windows(2) {
         let diag = w[0].0 != w[1].0 && w[0].1 != w[1].1;
@@ -204,7 +268,7 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
     let max_slope_deg = cells.iter().map(|&c| grid.slope(idx(c))).fold(0.0, f32::max);
     let max_rough_m = cells.iter().map(|&c| grid.rough[idx(c)]).fold(0.0, f32::max);
     let rock_cells = cells.iter().filter(|&&c| grid.rocks[idx(c)] > 0).count() as u32;
-    let hazard = |c: (usize, usize)| (grid.hazard[idx(c)] as f32 / 254.0).min(1.0);
+    let hazard = |c: (usize, usize)| (grid.hazard_at(idx(c), p) as f32 / 254.0).min(1.0);
     let mean_hazard = cells.iter().map(|&c| hazard(c)).sum::<f32>() / cells.len() as f32;
     let max_hazard = cells.iter().map(|&c| hazard(c)).fold(0.0, f32::max);
     Some(RouteResult {
@@ -220,7 +284,7 @@ pub fn plan(grid: &CostGrid, start: (usize, usize), goal: (usize, usize), p: &Ro
     })
 }
 
-/// Same hard limits, no risk weights: `plan` with these finds the shortest path the walker is allowed
+/// Same hard limits, no risk weights: `plan` with these finds the shortest path the vehicle is allowed
 /// to take, the reference the safe route is compared against.
 pub fn baseline_params(p: &RouteParams) -> RouteParams {
     RouteParams { w_slope: 0.0, w_hazard: 0.0, w_thermal: 0.0, w_rad: 0.0, w_rough: 0.0, w_texture: 0.0, w_rocks: 0.0, ..*p }
@@ -313,6 +377,26 @@ fn gizmo_style(mut store: ResMut<GizmoConfigStore>) {
     cfg.depth_bias = -1.0; // map view: lines on top of the terrain; camera::enter_mode changes it per view
 }
 
+/// World-space line of a route: through the cell centres, but starting and ending on the clicked points
+/// `a` and `b` themselves, so the rover leaves from and stops exactly on the pins.
+fn route_line(g: &CostGrid, cells: &[(usize, usize)], a: Vec3, b: Vec3, height: impl Fn(f32, f32) -> f32) -> Vec<Vec3> {
+    let on_ground = |x: f32, z: f32| Vec3::new(x, height(x, z), z);
+    let mut line: Vec<Vec3> = cells
+        .iter()
+        .map(|&cell| {
+            let (x, z) = g.center(cell);
+            on_ground(x, z)
+        })
+        .collect();
+    if line.len() == 1 {
+        line.push(line[0]); // start and end in the same cell
+    }
+    if let [first, .., last] = line.as_mut_slice() {
+        (*first, *last) = (on_ground(a.x, a.z), on_ground(b.x, b.z));
+    }
+    line
+}
+
 pub fn replan(
     ends: Res<Endpoints>,
     params: Res<RouteParams>,
@@ -342,21 +426,14 @@ pub fn replan(
     let direct = direct.map(|d| {
         serde_json::json!({"cells": d.cells, "blocked": d.blocked, "slope": d.slope, "rough": d.rough, "hazard": d.hazard})
     });
-    let polyline: Vec<Vec3> = result
-        .as_ref()
-        .map(|r| {
-            r.cells
-                .iter()
-                .map(|&cell| {
-                    let (x, z) = g.center(cell);
-                    Vec3::new(x, site.height_at(x, z), z)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let polyline = result.as_ref().map(|r| route_line(g, &r.cells, a, b, |x, z| site.height_at(x, z))).unwrap_or_default();
     let (sa, sb) = (site.latlon_of(a.x, a.z), site.latlon_of(b.x, b.z));
     let wf = weight_factor(&params);
     let s_eff = s_max_eff(&params);
+    let vehicle = match params.vehicle {
+        Vehicle::Eva => "eva",
+        Vehicle::Rover => "rover",
+    };
     let json = match &result {
         Some(r) => {
             let h: Vec<f32> = polyline.iter().map(|p| p.y + site.h_mid()).collect();
@@ -384,7 +461,8 @@ pub fn replan(
                 })
             });
             serde_json::json!({
-                "status": "ok", "length_m": r.length_m, "eta_min": r.eta_min, "max_slope_deg": r.max_slope_deg,
+                "status": "ok", "vehicle": vehicle, "length_m": r.length_m, "eta_min": r.eta_min,
+                "max_slope_deg": r.max_slope_deg,
                 "mean_hazard": r.mean_hazard, "weight_factor": wf, "s_max_eff_deg": s_eff,
                 "max_rough_m": r.max_rough_m, "rough_max_m": params.rough_max_m, "rock_cells": r.rock_cells,
                 "max_hazard": r.max_hazard, "baseline": baseline, "direct": direct,
@@ -393,7 +471,7 @@ pub fn replan(
             })
         }
         None => serde_json::json!({
-            "status": "no_path", "length_m": 0, "eta_min": 0, "max_slope_deg": 0, "mean_hazard": 0,
+            "status": "no_path", "vehicle": vehicle, "length_m": 0, "eta_min": 0, "max_slope_deg": 0, "mean_hazard": 0,
             "weight_factor": wf, "s_max_eff_deg": s_eff, "ascent_m": 0, "descent_m": 0, "profile": [],
             "max_rough_m": 0, "rough_max_m": params.rough_max_m, "rock_cells": 0, "max_hazard": 0,
             "baseline": null, "direct": direct,
@@ -404,15 +482,20 @@ pub fn replan(
     *route = Route { result, polyline };
 }
 
+/// The drawn route floats `RIBBON_LIFT_M` above the ground and is sampled every `RIBBON_STEP_M` (half
+/// the relief mesh spacing), so it doesn't cut through the bumps between the planning cells.
+pub(crate) const RIBBON_LIFT_M: f32 = 0.15;
+pub(crate) const RIBBON_STEP_M: f32 = 1.0;
+
 fn draw_route(route: Res<Route>, surface: Res<Surface>, vs: Res<VScale>, mut gizmos: Gizmos) {
     if route.polyline.len() > 1 {
-        let line = surface.drape(route.polyline.iter().map(|p| p.xz()), *vs, 0.15, 4.0);
+        let line = surface.drape(route.polyline.iter().map(|p| p.xz()), *vs, RIBBON_LIFT_M, RIBBON_STEP_M);
         gizmos.linestrip(line, Color::srgb_u8(0x38, 0xe0, 0xc8));
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn grid(n: usize, slope: f32) -> CostGrid {
@@ -424,9 +507,19 @@ mod tests {
             texture: z.clone(),
             rocks: z.clone(),
             hazard: z.clone(),
+            hazard_phys: z.clone(),
             thermal: z.clone(),
             rad: z,
         }
+    }
+
+    fn rover() -> RouteParams {
+        RouteParams { vehicle: Vehicle::Rover, ..RouteParams::default() }
+    }
+
+    /// The load that counts for this vehicle.
+    fn load(p: &RouteParams) -> f32 {
+        if p.vehicle == Vehicle::Rover { p.rover_payload_kg } else { p.payload_kg }
     }
 
     #[test]
@@ -472,6 +565,7 @@ mod tests {
     fn payload_lowers_allowed_slope() {
         let g = grid(20, 15.0);
         let p = RouteParams::default();
+        assert_eq!(p.vehicle, Vehicle::Eva);
         assert!((weight_factor(&p) - 0.9644).abs() < 1e-3);
         assert_eq!(s_max_eff(&p), 20.0);
         assert!(plan(&g, (0, 0), (0, 19), &p).is_some());
@@ -480,6 +574,95 @@ mod tests {
         assert!((weight_factor(&heavy) - 1.437).abs() < 1e-3);
         assert!((s_max_eff(&heavy) - 13.92).abs() < 0.01);
         assert!(plan(&g, (0, 0), (0, 19), &heavy).is_none());
+    }
+
+    #[test]
+    fn rover_limit_is_separate_from_eva() {
+        let p = rover();
+        // Same payload as the EVA default, but the rover's own limit and load model.
+        assert!((weight_factor(&p) - 1045.0 / 1125.0).abs() < 1e-5);
+        assert_eq!(s_max_eff(&p), 45.0);
+        assert_eq!(s_max_eff(&RouteParams::default()), 20.0);
+        // Changing one vehicle's limit leaves the other alone.
+        assert_eq!(s_max_eff(&RouteParams { rover_s_max_deg: 30.0, ..RouteParams::default() }), 20.0);
+        assert_eq!(s_max_eff(&RouteParams { s_max_base_deg: 10.0, ..p }), 45.0);
+        assert!((flat_speed(&p) - ROVER_SPEED_MPS).abs() < 1e-6);
+        assert!((flat_speed(&RouteParams::default()) - BASE_SPEED_MPS).abs() < 1e-6);
+    }
+
+    /// A 20-cell corridor of one slope: does each vehicle/load cross it? Expected from s_max_eff:
+    /// EVA 20° (heavy 13.92°), rover 45° (heavy: 1,525 / 1,125 kg -> 33.20°).
+    #[test]
+    fn slope_table_by_vehicle_and_load() {
+        let eva = RouteParams::default();
+        let eva_heavy = RouteParams { payload_kg: 120.0, ..eva };
+        let rov = rover();
+        let rov_heavy = RouteParams { rover_payload_kg: 500.0, ..rov };
+        assert!((s_max_eff(&rov_heavy) - 33.20).abs() < 0.01, "{}", s_max_eff(&rov_heavy));
+        //            slope  eva    eva_heavy rover  rover_heavy
+        let table = [
+            (15.0, [true, false, true, true]),
+            (25.0, [false, false, true, true]),
+            (35.0, [false, false, true, false]),
+            (44.0, [false, false, true, false]),
+            (46.0, [false, false, false, false]),
+        ];
+        for (slope, expect) in table {
+            let g = grid(20, slope);
+            for (p, ok) in [eva, eva_heavy, rov, rov_heavy].iter().zip(expect) {
+                let r = plan(&g, (0, 0), (0, 19), p);
+                assert_eq!(r.is_some(), ok, "{slope}° {:?} payload {} (limit {:.2}°)", p.vehicle, load(p), s_max_eff(p));
+                assert_eq!(slope < s_max_eff(p), ok);
+                if let Some(r) = r {
+                    assert!(r.max_slope_deg < s_max_eff(p));
+                    // Steeper is slower and costlier, relative to the vehicle's own limit.
+                    let t = slope / s_max_eff(p);
+                    let eta = 19.0 * STEP_M / (flat_speed(p) * (1.0 - SLOPE_SLOWDOWN * t)) / 60.0;
+                    assert!((r.eta_min - eta).abs() < 1e-3 * eta, "eta {} vs {}", r.eta_min, eta);
+                    let m = 1.0 + p.w_slope * t * t;
+                    // A* rounds each step to whole centimetres: ≤ 0.5 cm × 19 steps.
+                    assert!((r.cost - 19.0 * STEP_M * m).abs() < 0.1,"cost {} vs {}", r.cost, 19.0 * STEP_M * m);
+                }
+            }
+        }
+        // Exactly at the limit is blocked: "slope less than the limit".
+        assert!(plan(&grid(20, 45.0), (0, 0), (0, 19), &rov).is_none());
+    }
+
+    #[test]
+    fn each_vehicle_reads_its_own_hazard_layer() {
+        // A wall the EVA model flags (slope rule) but the ground model does not: only the rover crosses.
+        let mut g = grid(20, 0.0);
+        for r in 0..20 {
+            g.hazard[r * 20 + 10] = 255;
+            g.hazard_phys[r * 20 + 10] = 60;
+        }
+        assert!(plan(&g, (0, 0), (0, 19), &RouteParams::default()).is_none());
+        let r = plan(&g, (0, 0), (0, 19), &rover()).expect("rover path");
+        assert!((r.max_hazard - 60.0 / 254.0).abs() < 1e-6);
+        // A real obstacle in the ground model blocks the rover too.
+        for r in 0..20 {
+            g.hazard_phys[r * 20 + 10] = 255;
+        }
+        assert!(plan(&g, (0, 0), (0, 19), &rover()).is_none());
+        assert_eq!(straight_line_blocked(&g, (5, 0), (5, 19), &rover()).hazard, 1);
+    }
+
+    #[test]
+    fn params_json_from_the_web_app() {
+        // What src/components/Planner.tsx sends through set_params.
+        let p: RouteParams = serde_json::from_str(
+            r#"{"vehicle":"rover","body_kg":80,"suit_kg":104,"payload_kg":20,"rover_payload_kg":500,"s_max_base_deg":20,
+                "rover_s_max_deg":45,"rover_kg":1025,"rover_rated_payload_kg":100,"rough_max_m":0.3,
+                "w_slope":3,"w_hazard":5,"w_thermal":0.5,"w_rad":0.5,"w_rough":2,"w_texture":1,"w_rocks":3}"#,
+        )
+        .expect("parses");
+        assert_eq!(p.vehicle, Vehicle::Rover);
+        assert!((s_max_eff(&p) - 33.20).abs() < 0.01);
+        // Older clients without the new fields still get the EVA defaults.
+        let old: RouteParams = serde_json::from_str(r#"{"payload_kg":20}"#).expect("parses");
+        assert_eq!((old.vehicle, s_max_eff(&old)), (Vehicle::Eva, 20.0));
+        assert!(serde_json::from_str::<RouteParams>(r#"{"vehicle":"truck"}"#).is_err());
     }
 
     #[test]
@@ -553,8 +736,36 @@ mod tests {
             .sum()
     }
 
+    #[test]
+    fn route_line_starts_and_ends_on_the_clicked_points() {
+        let g = grid(20, 0.0);
+        let r = plan(&g, (3, 2), (3, 9), &RouteParams::default()).expect("path");
+        let (start, end) = (Vec2::from(g.center((3, 2))), Vec2::from(g.center((3, 9))));
+        // Clicks land anywhere inside the cell, not on its centre.
+        let (a, b) = (Vec3::new(start.x + 3.0, 7.0, start.y - 4.0), Vec3::new(end.x - 2.5, 7.0, end.y + 4.5));
+        let line = route_line(&g, &r.cells, a, b, |_, _| 1.0);
+        assert_eq!(line.len(), r.cells.len());
+        assert_eq!((line[0], line[line.len() - 1]), (Vec3::new(a.x, 1.0, a.z), Vec3::new(b.x, 1.0, b.z)));
+        assert_eq!(line[1].xz(), Vec2::from(g.center(r.cells[1])));
+        // Start and end in the same cell still give a line to walk.
+        let line = route_line(&g, &[(3, 2)], a, b, |_, _| 1.0);
+        assert_eq!(line, vec![Vec3::new(a.x, 1.0, a.z), Vec3::new(b.x, 1.0, b.z)]);
+    }
+
+    /// Start/end cells spread over the region, for the checks on the real site.
+    pub(crate) const PAIRS: [((usize, usize), (usize, usize)); 8] = [
+        ((100, 100), (300, 400)),
+        ((500, 500), (650, 700)),
+        ((200, 800), (450, 650)),
+        ((800, 200), (600, 350)),
+        ((900, 900), (700, 750)),
+        ((50, 500), (250, 520)),
+        ((500, 50), (520, 300)),
+        ((350, 350), (500, 600)),
+    ];
+
     /// First open cell on growing square rings around `cell`.
-    fn open_near(g: &CostGrid, (r, c): (usize, usize), p: &RouteParams) -> (usize, usize) {
+    pub(crate) fn open_near(g: &CostGrid, (r, c): (usize, usize), p: &RouteParams) -> (usize, usize) {
         for d in 0..50i64 {
             for dr in -d..=d {
                 for dc in -d..=d {
@@ -575,25 +786,29 @@ mod tests {
     fn route_respects_hard_limits_on_real_site() {
         let site = Site::load();
         let g = CostGrid::from_site(&site);
-        let p = RouteParams::default();
-        let pairs = [
-            ((100, 100), (300, 400)),
-            ((500, 500), (650, 700)),
-            ((200, 800), (450, 650)),
-            ((800, 200), (600, 350)),
-            ((900, 900), (700, 750)),
-            ((50, 500), (250, 520)),
-            ((500, 50), (520, 300)),
-            ((350, 350), (500, 600)),
-        ];
+        for p in [RouteParams::default(), rover(), RouteParams { rover_payload_kg: 500.0, ..rover() }] {
+            check_real_site(&site, &g, &p);
+        }
+    }
+
+    fn check_real_site(site: &Site, g: &CostGrid, p: &RouteParams) {
+        let p = *p;
         let open = |c: (usize, usize)| g.multiplier(c.0 * g.n + c.1, &p).is_some();
         let mut ok = 0;
+        eprintln!("{:?} payload {} kg, slope limit {:.2}°", p.vehicle, load(&p), s_max_eff(&p));
         eprintln!("pair | length safe/base m | max slope safe/base ° | max rough safe/base m | rock cells safe/base");
-        for (a, b) in pairs {
-            let (a, b) = (open_near(&g, a, &p), open_near(&g, b, &p));
-            let Some(r) = plan(&g, a, b, &p) else { continue };
-            let base = plan(&g, a, b, &baseline_params(&p)).expect("baseline exists when the safe route does");
+        for (a, b) in PAIRS {
+            let (a, b) = (open_near(g, a, &p), open_near(g, b, &p));
+            let Some(r) = plan(g, a, b, &p) else { continue };
+            let base = plan(g, a, b, &baseline_params(&p)).expect("baseline exists when the safe route does");
             ok += 1;
+            for &(row, col) in &r.cells {
+                let i = row * g.n + col;
+                // Never on a cell any layer marks as really dangerous for this vehicle.
+                assert!(site.slope_deg[i] < s_max_eff(&p) && site.rough_m[i] <= p.rough_max_m, "{:?}", (row, col));
+                let hz = if p.vehicle == Vehicle::Eva { site.hazard[i] } else { site.hazard_phys[i] };
+                assert_ne!(hz, 255, "route enters an impassable cell {:?}", (row, col));
+            }
             assert!(r.cells.iter().all(|&c| open(c)));
             for w in r.cells.windows(2) {
                 let (dr, dc) = (w[0].0.abs_diff(w[1].0), w[0].1.abs_diff(w[1].1));
@@ -604,7 +819,7 @@ mod tests {
             }
             assert!(r.max_slope_deg < s_max_eff(&p) && r.max_rough_m <= p.rough_max_m);
             // A* is optimal under the safety weights: the shortest allowed path never scores better.
-            let base_cost = path_cost(&g, &base.cells, &p);
+            let base_cost = path_cost(g, &base.cells, &p);
             assert!(r.cost <= base_cost + 0.01 * base.cells.len() as f32, "{} vs {}", r.cost, base_cost);
             assert!(r.length_m + 1e-3 >= base.length_m);
             eprintln!(

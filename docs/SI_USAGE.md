@@ -40,3 +40,22 @@ v2.4 (15 nov, rama `kaz-texture`): a pedido del equipo (texturas de baja calidad
 - `notebooks/jezero_pipeline.py`: etapa `ortho2`, que baja el mismo ortomosaico HiRISE de JPL Mars Trek a zoom 17 (~0,32 m/px) y lo colorea igual que `color` → `public/data/jezero/tiles/o2_*.jpg`. Son datos de NASA reprocesados, no generados.
 - `sim/src/route.rs`: métricas nuevas de la ruta, ruta base (la permitida más corta, mismos límites duros y sin pesos), conteo de celdas prohibidas en la línea recta, y tests de seguridad con datos reales.
 - `sim/src/picking.rs` + `src/components/planner/RouteInfoPin.tsx`: botón de info sobre el pin de destino que explica por qué la ruta es la más segura.
+
+v2.5 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo (modelado 3D más realista a partir de las texturas y comprobar las rutas sobre el terreno nuevo), Claude/omp escribió código. La lectura del repo y la búsqueda web las hicieron tres subagentes con Claude Haiku 4.5; sus cifras de geometría solar y de dunas no se usaron sin comprobar (la dirección del sol se ajustó contra el DTM).
+- `sim/src/relief.rs` (nuevo): relieve fino estimado por fotoclinometría a partir de la ortofoto HiRISE z17. Es un **dato derivado por código, no generado por IA**, y es una estimación visual: acuerda poco con el DTM (r ≈ 0,26) y no entra en el cálculo de rutas.
+- `sim/src/terrain.rs`: los chunks a menos de 150 m usan una malla de 2 m con ese relieve y `Surface` devuelve esas alturas.
+- `sim/src/rover.rs`, `sim/src/route.rs`: test con datos reales que conduce el rover por las rutas sobre el terreno nuevo; la línea de la ruta se muestrea cada 1 m.
+- `src/components/planner/SourcesFooter.tsx`: la lista de fuentes declara el relieve estimado.
+- `sim/src/rover.rs`, `sim/src/route.rs`, `sim/src/picking.rs`, `sim/src/bridge.rs`, `src/components/Planner.tsx`: arreglo del final del recorrido (el rover para sobre el destino, se queda ahí y el siguiente clic planifica desde esa posición).
+
+v2.6 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo ("subir a 45° el límite de inclinación del Rover, separado del límite EVA, y verificarlo"), Claude Code (Opus 5.5) escribió código y corrió el pipeline. Los 45° del rover son un **parámetro experimental de simulación** elegido por el equipo, no una capacidad comprobada de Perseverance.
+- `sim/src/route.rs`: `Vehicle` (`eva` | `rover`) en `RouteParams`. EVA conserva 20° (NASA), su carga y `hazard.png`. Rover: `rover_s_max_deg` 45°, carga propia `rover_payload_kg` con un modelo de carga experimental ((1025 + carga) / (1025 + 100 kg nominales)), velocidad 4,2 cm/s (NASA) y capa `hazard_phys.png`. Tests nuevos: tabla 15/25/35/44/46° × carga normal/elevada × vehículo, capa de peligro por vehículo, JSON de la web y rutas reales en ambos modos.
+- `sim/src/data.rs`, `sim/src/layers.rs`, `sim/src/rover.rs`: carga de la capa nueva, overlay de peligro del vehículo activo y test del rover en ambos modos.
+- `notebooks/jezero_pipeline.py`: `rule_labels(with_slope)` (refactor de `autolabel`, salida idéntica comprobada), etapa `fine` (rehace los intermedios de 2 m sin tocar assets; coinciden 100 % con los commiteados) y etapa `hazard_phys` → `sim/assets/jezero/hazard_phys.png`. Es un **dato derivado por código** (MLP de scikit-learn sobre datos de NASA), no generado por IA.
+- `src/lib/marsSim.ts`, `src/components/Planner.tsx`, `src/components/planner/LimitsSection.tsx`, `src/components/planner/MapOverlay.tsx`, `src/app/page.tsx`: selector Astronauta/Rover, campos por vehículo, aviso de valor experimental y textos de fuentes.
+- `public/sim/`: WASM recompilado.
+
+v2.7 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo ("rediseñar la interfaz del visor de mapa según una referencia visual, sin romper la lógica"), Claude Code (Opus 5.5) escribió código de UI. No cambia ninguna lógica del simulador ni de rutas.
+- `src/app/globals.css`: tema `.theme-hud` (panel oscuro, acento dorado) que redefine los tokens dentro del visor.
+- `src/components/Planner.tsx`: mapa a pantalla completa, panel flotante colapsable, botones Play rover / Clear fijos abajo.
+- `src/components/planner/ui.tsx` (`Collapsible`), `icons.tsx` (nuevo), `RouteSection.tsx`, `LimitsSection.tsx` (dividido en `CrewSection` y `AvoidanceSection`), `LayersSection.tsx`, `ConditionsSection.tsx`, `RawImagesSection.tsx`, `SourcesFooter.tsx`, `MapOverlay.tsx`: filas colapsables, métricas de ruta en tarjetas, pills de cámara (Orbit/Rover/Drone/Reset view) y HUD del cursor.
