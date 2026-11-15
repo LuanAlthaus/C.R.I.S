@@ -313,6 +313,26 @@ fn gizmo_style(mut store: ResMut<GizmoConfigStore>) {
     cfg.depth_bias = -1.0; // map view: lines on top of the terrain; camera::enter_mode changes it per view
 }
 
+/// World-space line of a route: through the cell centres, but starting and ending on the clicked points
+/// `a` and `b` themselves, so the rover leaves from and stops exactly on the pins.
+fn route_line(g: &CostGrid, cells: &[(usize, usize)], a: Vec3, b: Vec3, height: impl Fn(f32, f32) -> f32) -> Vec<Vec3> {
+    let on_ground = |x: f32, z: f32| Vec3::new(x, height(x, z), z);
+    let mut line: Vec<Vec3> = cells
+        .iter()
+        .map(|&cell| {
+            let (x, z) = g.center(cell);
+            on_ground(x, z)
+        })
+        .collect();
+    if line.len() == 1 {
+        line.push(line[0]); // start and end in the same cell
+    }
+    if let [first, .., last] = line.as_mut_slice() {
+        (*first, *last) = (on_ground(a.x, a.z), on_ground(b.x, b.z));
+    }
+    line
+}
+
 pub fn replan(
     ends: Res<Endpoints>,
     params: Res<RouteParams>,
@@ -342,18 +362,7 @@ pub fn replan(
     let direct = direct.map(|d| {
         serde_json::json!({"cells": d.cells, "blocked": d.blocked, "slope": d.slope, "rough": d.rough, "hazard": d.hazard})
     });
-    let polyline: Vec<Vec3> = result
-        .as_ref()
-        .map(|r| {
-            r.cells
-                .iter()
-                .map(|&cell| {
-                    let (x, z) = g.center(cell);
-                    Vec3::new(x, site.height_at(x, z), z)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let polyline = result.as_ref().map(|r| route_line(g, &r.cells, a, b, |x, z| site.height_at(x, z))).unwrap_or_default();
     let (sa, sb) = (site.latlon_of(a.x, a.z), site.latlon_of(b.x, b.z));
     let wf = weight_factor(&params);
     let s_eff = s_max_eff(&params);
@@ -404,15 +413,20 @@ pub fn replan(
     *route = Route { result, polyline };
 }
 
+/// The drawn route floats `RIBBON_LIFT_M` above the ground and is sampled every `RIBBON_STEP_M` (half
+/// the relief mesh spacing), so it doesn't cut through the bumps between the planning cells.
+pub(crate) const RIBBON_LIFT_M: f32 = 0.15;
+pub(crate) const RIBBON_STEP_M: f32 = 1.0;
+
 fn draw_route(route: Res<Route>, surface: Res<Surface>, vs: Res<VScale>, mut gizmos: Gizmos) {
     if route.polyline.len() > 1 {
-        let line = surface.drape(route.polyline.iter().map(|p| p.xz()), *vs, 0.15, 4.0);
+        let line = surface.drape(route.polyline.iter().map(|p| p.xz()), *vs, RIBBON_LIFT_M, RIBBON_STEP_M);
         gizmos.linestrip(line, Color::srgb_u8(0x38, 0xe0, 0xc8));
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn grid(n: usize, slope: f32) -> CostGrid {
@@ -553,8 +567,36 @@ mod tests {
             .sum()
     }
 
+    #[test]
+    fn route_line_starts_and_ends_on_the_clicked_points() {
+        let g = grid(20, 0.0);
+        let r = plan(&g, (3, 2), (3, 9), &RouteParams::default()).expect("path");
+        let (start, end) = (Vec2::from(g.center((3, 2))), Vec2::from(g.center((3, 9))));
+        // Clicks land anywhere inside the cell, not on its centre.
+        let (a, b) = (Vec3::new(start.x + 3.0, 7.0, start.y - 4.0), Vec3::new(end.x - 2.5, 7.0, end.y + 4.5));
+        let line = route_line(&g, &r.cells, a, b, |_, _| 1.0);
+        assert_eq!(line.len(), r.cells.len());
+        assert_eq!((line[0], line[line.len() - 1]), (Vec3::new(a.x, 1.0, a.z), Vec3::new(b.x, 1.0, b.z)));
+        assert_eq!(line[1].xz(), Vec2::from(g.center(r.cells[1])));
+        // Start and end in the same cell still give a line to walk.
+        let line = route_line(&g, &[(3, 2)], a, b, |_, _| 1.0);
+        assert_eq!(line, vec![Vec3::new(a.x, 1.0, a.z), Vec3::new(b.x, 1.0, b.z)]);
+    }
+
+    /// Start/end cells spread over the region, for the checks on the real site.
+    pub(crate) const PAIRS: [((usize, usize), (usize, usize)); 8] = [
+        ((100, 100), (300, 400)),
+        ((500, 500), (650, 700)),
+        ((200, 800), (450, 650)),
+        ((800, 200), (600, 350)),
+        ((900, 900), (700, 750)),
+        ((50, 500), (250, 520)),
+        ((500, 50), (520, 300)),
+        ((350, 350), (500, 600)),
+    ];
+
     /// First open cell on growing square rings around `cell`.
-    fn open_near(g: &CostGrid, (r, c): (usize, usize), p: &RouteParams) -> (usize, usize) {
+    pub(crate) fn open_near(g: &CostGrid, (r, c): (usize, usize), p: &RouteParams) -> (usize, usize) {
         for d in 0..50i64 {
             for dr in -d..=d {
                 for dc in -d..=d {
@@ -576,20 +618,10 @@ mod tests {
         let site = Site::load();
         let g = CostGrid::from_site(&site);
         let p = RouteParams::default();
-        let pairs = [
-            ((100, 100), (300, 400)),
-            ((500, 500), (650, 700)),
-            ((200, 800), (450, 650)),
-            ((800, 200), (600, 350)),
-            ((900, 900), (700, 750)),
-            ((50, 500), (250, 520)),
-            ((500, 50), (520, 300)),
-            ((350, 350), (500, 600)),
-        ];
         let open = |c: (usize, usize)| g.multiplier(c.0 * g.n + c.1, &p).is_some();
         let mut ok = 0;
         eprintln!("pair | length safe/base m | max slope safe/base ° | max rough safe/base m | rock cells safe/base");
-        for (a, b) in pairs {
+        for (a, b) in PAIRS {
             let (a, b) = (open_near(&g, a, &p), open_near(&g, b, &p));
             let Some(r) = plan(&g, a, b, &p) else { continue };
             let base = plan(&g, a, b, &baseline_params(&p)).expect("baseline exists when the safe route does");

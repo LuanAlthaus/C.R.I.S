@@ -40,3 +40,10 @@ v2.4 (15 nov, rama `kaz-texture`): a pedido del equipo (texturas de baja calidad
 - `notebooks/jezero_pipeline.py`: etapa `ortho2`, que baja el mismo ortomosaico HiRISE de JPL Mars Trek a zoom 17 (~0,32 m/px) y lo colorea igual que `color` → `public/data/jezero/tiles/o2_*.jpg`. Son datos de NASA reprocesados, no generados.
 - `sim/src/route.rs`: métricas nuevas de la ruta, ruta base (la permitida más corta, mismos límites duros y sin pesos), conteo de celdas prohibidas en la línea recta, y tests de seguridad con datos reales.
 - `sim/src/picking.rs` + `src/components/planner/RouteInfoPin.tsx`: botón de info sobre el pin de destino que explica por qué la ruta es la más segura.
+
+v2.5 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo (modelado 3D más realista a partir de las texturas y comprobar las rutas sobre el terreno nuevo), Claude/omp escribió código. La lectura del repo y la búsqueda web las hicieron tres subagentes con Claude Haiku 4.5; sus cifras de geometría solar y de dunas no se usaron sin comprobar (la dirección del sol se ajustó contra el DTM).
+- `sim/src/relief.rs` (nuevo): relieve fino estimado por fotoclinometría a partir de la ortofoto HiRISE z17. Es un **dato derivado por código, no generado por IA**, y es una estimación visual: acuerda poco con el DTM (r ≈ 0,26) y no entra en el cálculo de rutas.
+- `sim/src/terrain.rs`: los chunks a menos de 150 m usan una malla de 2 m con ese relieve y `Surface` devuelve esas alturas.
+- `sim/src/rover.rs`, `sim/src/route.rs`: test con datos reales que conduce el rover por las rutas sobre el terreno nuevo; la línea de la ruta se muestrea cada 1 m.
+- `src/components/planner/SourcesFooter.tsx`: la lista de fuentes declara el relieve estimado.
+- `sim/src/rover.rs`, `sim/src/route.rs`, `sim/src/picking.rs`, `sim/src/bridge.rs`, `src/components/Planner.tsx`: arreglo del final del recorrido (el rover para sobre el destino, se queda ahí y el siguiente clic planifica desde esa posición).

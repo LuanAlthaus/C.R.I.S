@@ -1,7 +1,8 @@
 //! Streamed terrain: 10×10 chunks of 1 km. Every chunk starts as a coarse mesh (40 m spacing, region-wide
 //! ortho); chunks near the camera load a detail tile (4 m heights + ~1 m HiRISE ortho) from
-//! public/data/jezero/tiles and drop it again when the camera moves away; chunks within 400 m swap to a
-//! 2048 px ortho (Trek z17, ~0.5 m/px).
+//! public/data/jezero/tiles and drop it again when the camera moves away; chunks within 150 m swap to a
+//! 2048 px ortho (Trek z17, ~0.5 m/px) and a 2 m mesh carrying the fine relief read from that image
+//! (see `relief`).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
@@ -13,6 +14,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::data::{HALF_M, SIZE_M, Site, VScale};
 use crate::layers::{OverlayAssets, OverlayMesh};
+use crate::relief;
 
 pub const TILE_M: f32 = 1000.0;
 pub const NT: usize = (SIZE_M / TILE_M) as usize;
@@ -24,10 +26,11 @@ const LOAD_DIST: f32 = 1600.0;
 const DROP_DIST: f32 = 2600.0;
 const MAX_LOADING: usize = 4;
 const MAX_DETAIL: usize = 20;
-/// Near-camera z17 ortho: load below `SHARP_LOAD_DIST` (m), drop beyond `SHARP_DROP_DIST`. 2048² RGBA
-/// with mips is ~22 MB of VRAM per chunk, hence the cap.
-const SHARP_LOAD_DIST: f32 = 400.0;
-const SHARP_DROP_DIST: f32 = 700.0;
+/// Near-camera level (z17 ortho + 2 m relief mesh): load below `SHARP_LOAD_DIST` (m), drop beyond
+/// `SHARP_DROP_DIST`. Kept short: a relief mesh has four times the triangles of a detail chunk, and
+/// 2048² RGBA with mips is ~22 MB of VRAM per chunk.
+const SHARP_LOAD_DIST: f32 = 150.0;
+const SHARP_DROP_DIST: f32 = 300.0;
 const MAX_SHARP: usize = 4;
 /// Fresnel reflectance of the regolith. Bevy's 0.5 default washes the ground out at the grazing
 /// angles of the rover and drone views.
@@ -43,8 +46,9 @@ pub struct Terrain;
 enum Lod {
     Coarse,
     Loading { h: Handle<Image>, o: Handle<Image> },
-    /// `material` is the 1 m ortho material, kept to fall back to when the sharp level is dropped.
-    Detail { material: Handle<StandardMaterial>, sharp: Sharp },
+    /// `material`, `mesh` and `heights` are the 1 m ortho and 4 m grid, kept to fall back to when the
+    /// sharp level is dropped and to build it from.
+    Detail { material: Handle<StandardMaterial>, mesh: Handle<Mesh>, heights: Vec<f32>, sharp: Sharp },
     Failed,
 }
 
@@ -71,8 +75,9 @@ struct CoarseAssets {
 }
 
 /// Heights (relative m, unexaggerated) of the terrain meshes actually on screen: per chunk, the coarse
-/// grid or the detail tile once loaded. Cameras, the rover, pins and lines sample this instead of the
-/// 10 m planning grid, so nothing sinks into or floats above the visible ground.
+/// grid, the detail tile once loaded, or the 2 m relief grid next to the camera. Cameras, the rover,
+/// pins and lines sample this instead of the 10 m planning grid, so nothing sinks into or floats above
+/// the visible ground.
 #[derive(Resource)]
 pub struct Surface {
     coarse: Vec<Vec<f32>>,
@@ -86,7 +91,7 @@ impl Surface {
         let (tx, ty) = (tile(x), tile(z));
         let i = ty * NT + tx;
         let (h, n) = match &self.detail[i] {
-            Some(d) => (d.as_slice(), DETAIL_VERTS),
+            Some(d) => (d.as_slice(), d.len().isqrt()), // 4 m detail or 2 m relief grid
             None => (self.coarse[i].as_slice(), COARSE_VERTS),
         };
         let (x0, z0) = chunk_origin(tx, ty);
@@ -218,10 +223,7 @@ fn grid_mesh(n: usize, x0: f32, z0: f32, spacing: f32, h: impl Fn(usize, usize) 
 /// in linear light (averaging the gamma bytes darkens and muddies every level); alpha and non-colour
 /// data (normal maps) are averaged as stored.
 fn mipmapped(w: u32, h: u32, mut data: Vec<u8>, srgb: bool, address: ImageAddressMode) -> Image {
-    let to_lin: [f32; 256] = std::array::from_fn(|i| {
-        let c = i as f32 / 255.0;
-        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
-    });
+    let to_lin = relief::srgb_to_linear();
     let to_srgb = |l: f32| {
         let c = if l <= 0.003_130_8 { 12.92 * l } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 };
         (c * 255.0).round().clamp(0.0, 255.0) as u8
@@ -322,6 +324,50 @@ fn detail_material(texture: Handle<Image>, tx: usize, ty: usize, grain: &Handle<
 
 fn chunk_origin(tx: usize, ty: usize) -> (f32, f32) {
     (tx as f32 * TILE_M - HALF_M, ty as f32 * TILE_M - HALF_M)
+}
+
+/// Point a chunk and its overlay child at `handle`.
+fn set_mesh(
+    mesh: &mut Mesh3d,
+    children: &Children,
+    overlays: &mut Query<&mut Mesh3d, (With<OverlayMesh>, Without<Chunk>)>,
+    handle: &Handle<Mesh>,
+) {
+    mesh.0 = handle.clone();
+    for c in children.iter() {
+        if let Ok(mut m) = overlays.get_mut(c) {
+            m.0 = handle.clone();
+        }
+    }
+}
+
+/// Heights (relative m) of a detail tile from the little-endian 16-bit samples of its PNG.
+fn detail_heights(site: &Site, bytes: &[u8]) -> Vec<f32> {
+    let span = site.meta.h_max - site.meta.h_min;
+    let mid = site.h_mid();
+    bytes
+        .chunks_exact(2)
+        .map(|b| site.meta.h_min + u16::from_le_bytes([b[0], b[1]]) as f32 / 65535.0 * span - mid)
+        .collect()
+}
+
+const _: () = assert!(relief::VERTS == 2 * DETAIL_VERTS - 1);
+
+/// Heights of a chunk next to the camera: the 4 m detail grid resampled to 2 m, plus the relief read
+/// from its `w`×`h` z17 ortho. The border stays on the detail grid, so it meets its neighbours.
+fn sharp_heights(detail: &[f32], rgba: &[u8], w: usize, h: usize) -> Vec<f32> {
+    let n = relief::VERTS;
+    let at = |i: usize, j: usize| detail[j * DETAIL_VERTS + i];
+    relief::from_ortho(rgba, w, h)
+        .into_iter()
+        .enumerate()
+        .map(|(k, r)| {
+            // A 2 m vertex sits on a 4 m vertex or halfway between two of them.
+            let (i, j) = (k % n, k / n);
+            let (i0, i1, j0, j1) = (i / 2, i.div_ceil(2), j / 2, j.div_ceil(2));
+            (at(i0, j0) + at(i1, j0) + at(i0, j1) + at(i1, j1)) / 4.0 + r
+        })
+        .collect()
 }
 
 pub fn setup(
@@ -429,13 +475,8 @@ fn stream_chunks(
         match chunk.lod {
             Lod::Detail { .. } | Lod::Loading { .. } if d > DROP_DIST => {
                 let i = chunk.ty * NT + chunk.tx;
-                mesh.0 = coarse.meshes[i].clone();
+                set_mesh(&mut mesh, children, &mut overlays, &coarse.meshes[i]);
                 mat.0 = coarse.material.clone();
-                for c in children.iter() {
-                    if let Ok(mut m) = overlays.get_mut(c) {
-                        m.0 = coarse.meshes[i].clone();
-                    }
-                }
                 surface.detail[i] = None;
                 chunk.lod = Lod::Coarse;
             }
@@ -462,16 +503,19 @@ fn stream_chunks(
         loading += 1;
     }
 
-    // Second level on detail chunks: the z17 ortho near the camera, back to the 1 m one further away.
+    // Second level on detail chunks: the z17 ortho and relief mesh near the camera, back to the 1 m
+    // ortho and 4 m grid further away.
     let mut busy = 0;
     let mut near: Vec<(f32, usize, usize)> = Vec::new();
-    for (mut chunk, _, mut mat, _) in &mut chunks {
+    for (mut chunk, mut mesh, mut mat, children) in &mut chunks {
         let (tx, ty) = (chunk.tx, chunk.ty);
         let d = dist(tx, ty);
-        let Lod::Detail { material, sharp } = &mut chunk.lod else { continue };
+        let Lod::Detail { material, mesh: detail_mesh, heights, sharp } = &mut chunk.lod else { continue };
         match sharp {
             Sharp::On | Sharp::Loading(_) if d > SHARP_DROP_DIST => {
                 mat.0 = material.clone();
+                set_mesh(&mut mesh, children, &mut overlays, detail_mesh);
+                surface.detail[ty * NT + tx] = Some(heights.clone());
                 *sharp = Sharp::Off; // dropping a Loading handle cancels the load
             }
             Sharp::On | Sharp::Loading(_) => busy += 1,
@@ -531,12 +575,7 @@ fn finish_loads(
             chunk.lod = Lod::Failed;
             continue;
         };
-        let span = site.meta.h_max - site.meta.h_min;
-        let mid = site.h_mid();
-        let q: Vec<f32> = bytes
-            .chunks_exact(2)
-            .map(|b| site.meta.h_min + u16::from_le_bytes([b[0], b[1]]) as f32 / 65535.0 * span - mid)
-            .collect();
+        let q = detail_heights(&site, bytes);
         if q.len() != DETAIL_VERTS * DETAIL_VERTS {
             warn!("detail tile {}_{} has unexpected size", chunk.ty, chunk.tx);
             chunk.lod = Lod::Failed;
@@ -547,16 +586,11 @@ fn finish_loads(
         let handle = meshes.add(grid_mesh(DETAIL_VERTS, x0, z0, spacing, |i, j| q[j * DETAIL_VERTS + i]));
         let (ow, oh) = ortho.dimensions();
         let texture = images.add(mipmapped(ow, oh, ortho.into_raw(), true, ImageAddressMode::ClampToEdge));
-        mesh.0 = handle.clone();
-        for c in children.iter() {
-            if let Ok(mut m) = overlays.get_mut(c) {
-                m.0 = handle.clone();
-            }
-        }
+        set_mesh(&mut mesh, children, &mut overlays, &handle);
         let material = materials.add(detail_material(texture, chunk.tx, chunk.ty, &coarse.grain));
         mat.0 = material.clone();
-        surface.detail[chunk.ty * NT + chunk.tx] = Some(q);
-        chunk.lod = Lod::Detail { material, sharp: Sharp::Off };
+        surface.detail[chunk.ty * NT + chunk.tx] = Some(q.clone());
+        chunk.lod = Lod::Detail { material, mesh: handle, heights: q, sharp: Sharp::Off };
         detail += 1;
     }
     let new = TileStats { loading, detail, sharp: sharp_on };
@@ -569,18 +603,23 @@ fn finish_loads(
     }
 }
 
-/// Swap in the z17 ortho of chunks whose `Sharp::Loading` image arrived.
+/// Swap in the z17 ortho of chunks whose `Sharp::Loading` image arrived, and the 2 m mesh with the
+/// relief read from it.
+#[allow(clippy::too_many_arguments)]
 fn finish_sharp(
     assets: Res<AssetServer>,
     coarse: Option<Res<CoarseAssets>>,
     mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut chunks: Query<(&mut Chunk, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut chunks: Query<(&mut Chunk, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>, &Children)>,
+    mut overlays: Query<&mut Mesh3d, (With<OverlayMesh>, Without<Chunk>)>,
+    mut surface: ResMut<Surface>,
 ) {
     let Some(coarse) = coarse else { return };
-    for (mut chunk, mut mat) in &mut chunks {
+    for (mut chunk, mut mesh, mut mat, children) in &mut chunks {
         let (tx, ty) = (chunk.tx, chunk.ty);
-        let Lod::Detail { sharp, .. } = &mut chunk.lod else { continue };
+        let Lod::Detail { heights, sharp, .. } = &mut chunk.lod else { continue };
         let Sharp::Loading(h) = sharp else { continue };
         if matches!(assets.load_state(h.id()), bevy::asset::LoadState::Failed(_)) {
             // Expected for chunks outside the z17 footprint: the pipeline skips them on purpose.
@@ -595,6 +634,11 @@ fn finish_sharp(
             continue;
         };
         let (w, hh) = rgba.dimensions();
+        let q = sharp_heights(heights, rgba.as_raw(), w as usize, hh as usize);
+        let (x0, z0) = chunk_origin(tx, ty);
+        let handle = meshes.add(grid_mesh(relief::VERTS, x0, z0, relief::SPACING_M, |i, j| q[j * relief::VERTS + i]));
+        set_mesh(&mut mesh, children, &mut overlays, &handle);
+        surface.detail[ty * NT + tx] = Some(q);
         let texture = images.add(mipmapped(w, hh, rgba.into_raw(), true, ImageAddressMode::ClampToEdge));
         mat.0 = materials.add(detail_material(texture, tx, ty, &coarse.grain));
         *sharp = Sharp::On; // drops the jpg handle, freeing the decoded CPU copy
@@ -606,6 +650,26 @@ fn apply_vscale(vs: Res<VScale>, mut chunks: Query<&mut Transform, With<Chunk>>)
         for mut tf in &mut chunks {
             tf.scale.y = vs.0;
         }
+    }
+}
+
+#[cfg(test)]
+impl Surface {
+    /// The ground the browser shows around a route, from the tiles on disk: `chunks` at the detail
+    /// level and the same chunks with the relief mesh. Other chunks are not loaded.
+    pub(crate) fn from_tiles(site: &Site, chunks: impl IntoIterator<Item = (usize, usize)>) -> (Surface, Surface) {
+        let empty = || Surface { coarse: vec![vec![0.0; COARSE_VERTS * COARSE_VERTS]; NT * NT], detail: vec![None; NT * NT] };
+        let (mut detail, mut sharp) = (empty(), empty());
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../public/data/jezero/tiles");
+        for (tx, ty) in chunks {
+            let h = image::open(format!("{dir}/h_{ty}_{tx}.png")).expect("height tile").into_luma16();
+            let bytes: Vec<u8> = h.as_raw().iter().flat_map(|v| v.to_le_bytes()).collect();
+            let q = detail_heights(site, &bytes);
+            let o = image::open(format!("{dir}/o2_{ty}_{tx}.jpg")).expect("z17 ortho tile").into_rgba8();
+            sharp.detail[ty * NT + tx] = Some(sharp_heights(&q, o.as_raw(), o.width() as usize, o.height() as usize));
+            detail.detail[ty * NT + tx] = Some(q);
+        }
+        (detail, sharp)
     }
 }
 
@@ -626,6 +690,34 @@ mod tests {
         // The quad centre lies on the v10-v01 diagonal: their mean, not the 4-corner bilinear mean.
         let mid = s.height(x0 + 2.5 * sp, z0 + 4.5 * sp);
         assert!((mid - (at(3, 4) + at(2, 5)) / 2.0).abs() < 1e-3, "{mid}");
+    }
+
+    #[test]
+    fn sharp_chunk_meets_its_neighbours_and_is_sampled_on_its_own_grid() {
+        let detail: Vec<f32> = (0..DETAIL_VERTS * DETAIL_VERTS).map(|k| ((k * 7919) % 13) as f32).collect();
+        let px = 512;
+        let rgba: Vec<u8> = (0..px * px)
+            .flat_map(|k| {
+                let v = 60 + ((k % px) / 5 + (k / px) / 7) as u8 % 3 * 60;
+                [v, v, v, 255]
+            })
+            .collect();
+        let q = sharp_heights(&detail, &rgba, px, px);
+        let n = relief::VERTS;
+        // North edge: the detail grid's vertices and the midpoints between them, untouched by relief.
+        for i in 0..n {
+            let want = (detail[i / 2] + detail[i.div_ceil(2)]) / 2.0;
+            assert!((q[i] - want).abs() < 1e-4, "edge vertex {i}: {} vs {want}", q[i]);
+        }
+        // Inside, the relief moves the ground off the detail grid.
+        let (i, j) = (200, 300); // even indices: exactly on a detail vertex
+        let moved = (0..40).map(|d| (q[j * n + i + 2 * d] - detail[j / 2 * DETAIL_VERTS + i / 2 + d]).abs()).fold(0.0, f32::max);
+        assert!(moved > 0.02, "relief of {moved} m");
+        let mut s = Surface { coarse: vec![vec![0.0; COARSE_VERTS * COARSE_VERTS]; NT * NT], detail: vec![None; NT * NT] };
+        s.detail[5 * NT + 3] = Some(q.clone());
+        let (x0, z0) = chunk_origin(3, 5);
+        let h = s.height(x0 + 101.0 * relief::SPACING_M, z0 + 57.0 * relief::SPACING_M);
+        assert!((h - q[57 * n + 101]).abs() < 1e-3, "{h}");
     }
 
     #[test]

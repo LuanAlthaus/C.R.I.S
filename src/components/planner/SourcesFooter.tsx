@@ -3,6 +3,10 @@
 import { labelCls, type SiteMeta } from "./ui";
 
 const FIXED_SOURCES: [string, string][] = [
+  [
+    "Fine relief near the camera",
+    "Estimated from the shading of the HiRISE orthomosaic (photoclinometry, 2 m grid). Visual only: it follows the HiRISE DTM loosely and is not used to plan routes",
+  ],
   ["Space weather", "DONKI WSA-Enlil simulations (NASA CCMC / M2M) via api.nasa.gov"],
   ["Mars weather", "NASA InSight APSS/TWINS via api.nasa.gov (Elysium Planitia, 2020)"],
   ["Earth comparison", "MODIS Terra/Aqua Land Surface Temperature via NASA GIBS / Worldview"],

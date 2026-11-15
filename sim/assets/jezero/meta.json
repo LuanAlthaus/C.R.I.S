@@ -22,8 +22,7 @@
   "verts": 251,
   "ortho_px": 1024,
   "path": "tiles",
-  "ortho2_px": 2048,
-  "ortho2_dist_m": 400
+  "ortho2_px": 2048
  },
  "h_min": -2652.11865234375,
  "h_max": -2392.3330078125,

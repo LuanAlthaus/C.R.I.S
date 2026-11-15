@@ -88,7 +88,14 @@ export default function Planner() {
       setRoute(r);
       setPlaying(false); // the sim rewinds the rover on every new route
     });
-    const offStopped = onSimEvent("mars-rover-stopped", () => setPlaying(false));
+    // The sim makes the point the rover just reached its new start and clears the end: the rover
+    // stays there and the next click picks where it goes from here.
+    const offStopped = onSimEvent<PickEvent>("mars-rover-stopped", (p) => {
+      setPlaying(false);
+      setStart(p);
+      setEnd(null);
+      setRoute(null);
+    });
     return () => {
       offPick();
       offTarget();

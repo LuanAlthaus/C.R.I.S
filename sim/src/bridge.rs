@@ -9,8 +9,8 @@ use crate::camera::{CamCtl, CameraMode, ResetView};
 use crate::data::VScale;
 use crate::layers::{Overlay, ShowTraverse};
 use crate::picking::PickTarget;
-use crate::rover::{RoverPlayback, rewind_if_finished};
-use crate::route::{Endpoints, Route, RouteParams};
+use crate::rover::RoverPlayback;
+use crate::route::{Endpoints, RouteParams};
 use crate::terrain::Terrain;
 
 pub enum SimCommand {
@@ -70,7 +70,6 @@ struct Targets<'w> {
     params: ResMut<'w, RouteParams>,
     playback: ResMut<'w, RoverPlayback>,
     ends: ResMut<'w, Endpoints>,
-    route: Res<'w, Route>,
     target: ResMut<'w, PickTarget>,
     vs: ResMut<'w, VScale>,
     traverse: ResMut<'w, ShowTraverse>,
@@ -90,12 +89,7 @@ fn drain_commands(mut t: Targets) {
             SimCommand::Params(p) => {
                 t.params.set_if_neq(p);
             }
-            SimCommand::Play(play) => {
-                if play {
-                    rewind_if_finished(&mut t.playback, &t.route);
-                }
-                t.playback.playing = play;
-            }
+            SimCommand::Play(play) => t.playback.playing = play,
             SimCommand::ClearRoute => {
                 *t.ends = Endpoints::default();
                 *t.target = PickTarget::Start;

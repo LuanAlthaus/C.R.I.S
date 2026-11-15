@@ -501,7 +501,6 @@ def cmd_ortho2(_):
             print(f"o2_{ty}_{tx} ({wrote})", flush=True)
     meta = load_meta()
     meta["tiles"]["ortho2_px"] = TILE_ORTHO2_PX
-    meta["tiles"]["ortho2_dist_m"] = 400
     old = next(c["text"] for c in meta["credits"] if c["layer"] == "ortho")
     if ORTHO2_NOTE not in old:
         set_credit(meta, "ortho", old + ORTHO2_NOTE)
