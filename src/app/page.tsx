@@ -78,7 +78,7 @@ export default function MainMenu() {
               C.R.I.S.
             </h1>
             <p className="mt-6 animate-menu-in text-lg font-thin tracking-[0.04em] [animation-delay:150ms] sm:text-xl">
-              Center Reconnaissance Interplanetary Survival
+              Center Research &amp; Interplanetary Simulation
             </p>
             <p className="mt-6 max-w-sm animate-menu-in leading-relaxed text-space-muted [animation-delay:300ms]">
               A Mars exploration simulator. Plan a spacesuit walk or a rover drive across Jezero crater, on terrain
