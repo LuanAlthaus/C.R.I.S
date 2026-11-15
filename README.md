@@ -64,7 +64,6 @@ C.R.I.S (Center Reconnaissance Interplanetary Survival) helps mission teams plan
 ## Tech stack
 
 - **Web app:** Next.js 16, React, TypeScript, Vercel
-- **Storage:** Supabase (Postgres with row-level security)
 - **Simulation:** Bevy, compiled to WebAssembly
 - **Data pipeline:** Python (earthaccess, xarray, astropy)
 
@@ -90,7 +89,7 @@ The full list with licenses is in `docs/SI_USAGE.md` and the credits section.
 
 ```bash
 pnpm install
-cp .env.example .env.local   # add the Supabase URL, publishable key, and NASA_API_KEY
+cp .env.example .env.local
 pnpm dev                     # http://localhost:3000
 ```
 
@@ -124,15 +123,6 @@ C.R.I.S/
 │   └── data/jezero/
 │       ├── tiles/                # 1 km HiRISE detail tiles
 │       └── rover.glb             # Perseverance 3D model (NASA logos removed)
-├── supabase/
-│   └── migrations/               # Database schema with row-level security
-├── scripts/
-│   └── build-sim.sh              # Builds the simulation to WebAssembly
-├── docs/
-│   ├── SI_USAGE.md               # Details on AI assistance
-│   ├── deploy/
-│   │   └── vercel-supabase.md    # Deployment guide
-│   └── resources/                # Event rules and resources
 ├── .claude/skills/               # Agent skills used during development
 ├── AGENTS.md                     # Rules for coding agents
 ├── CLAUDE.md                     # Rules for Claude Code
