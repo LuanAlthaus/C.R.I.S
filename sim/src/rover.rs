@@ -255,8 +255,9 @@ mod tests {
             assert!(clearance > 0.0, "route line dips {clearance} m under the ground");
             // On the DTM mesh the rover stays inside the planner's slope limit.
             assert!(max(&flat) < s_max_eff(&p), "rover tilts {}° on the DTM mesh", max(&flat));
-            // The relief is an estimate: it may tip the rover a little further, not throw it around.
-            assert!(added < 8.0, "relief adds {added}° of tilt");
+            // The relief is an estimate: it may tip the rover a little further, not throw it around. Rover routes
+            // may cross rougher ground (limit 0.40 m vs 0.30 m on foot), where the image relief is stronger.
+            assert!(added < 10.0, "relief adds {added}° of tilt");
         }
         assert!(ok >= 5, "only {ok} routes");
     }

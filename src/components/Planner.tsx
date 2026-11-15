@@ -16,6 +16,7 @@ import SourcesFooter from "@/components/planner/SourcesFooter";
 import { buttonCls, labelCls, primaryCls, type SiteMeta } from "@/components/planner/ui";
 import {
   allowedSlope,
+  roughLimit,
   DEFAULT_PARAMS,
   getSim,
   onSimEvent,
@@ -191,7 +192,7 @@ export default function Planner() {
             onChange={selectOverlay}
             meta={meta}
             allowedSlope={allowedSlope(params)}
-            maxRough={params.rough_max_m}
+            maxRough={roughLimit(params)}
             showTraverse={showTraverse}
             onShowTraverse={changeTraverse}
             vscale={vscale}

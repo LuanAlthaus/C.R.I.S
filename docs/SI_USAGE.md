@@ -59,3 +59,8 @@ v2.7 (15 nov, rama `kaz-textures-3D-renew`): a pedido del equipo ("rediseñar la
 - `src/app/globals.css`: tema `.theme-hud` (panel oscuro, acento dorado) que redefine los tokens dentro del visor.
 - `src/components/Planner.tsx`: mapa a pantalla completa, panel flotante colapsable, botones Play rover / Clear fijos abajo.
 - `src/components/planner/ui.tsx` (`Collapsible`), `icons.tsx` (nuevo), `RouteSection.tsx`, `LimitsSection.tsx` (dividido en `CrewSection` y `AvoidanceSection`), `LayersSection.tsx`, `ConditionsSection.tsx`, `RawImagesSection.tsx`, `SourcesFooter.tsx`, `MapOverlay.tsx`: filas colapsables, métricas de ruta en tarjetas, pills de cámara (Orbit/Rover/Drone/Reset view) y HUD del cursor.
+
+v2.8 (15 nov, rama `fix-slope`): a pedido del equipo ("el rover con 45° no pasa por zonas de 23°; que los parámetros del astronauta y del rover no se afecten"), Claude Code (Opus 5.5) escribió código y recompiló el WASM.
+- Causa: el WASM commiteado era anterior a `Vehicle` y descartaba `vehicle`/`rover_s_max_deg`, así que el rover planificaba con los 20° EVA. `public/sim/` recompilado.
+- `sim/src/route.rs`: límite de rugosidad por vehículo (`rover_rough_max_m` 0,40 m = obstáculo de 40 cm de Perseverance, NASA; EVA sigue en 0,30 m) y función `rough_max`. Tests nuevos: `each_vehicle_has_its_own_roughness_limit` y `rover_reaches_steep_ground_the_walker_cannot` (sitio real, 22–24°). `sim/src/layers.rs`: la capa de rugosidad usa el límite del vehículo. `sim/src/rover.rs`: cota del test de relieve 8° → 10° (las rutas del rover pasan por suelo más rugoso).
+- `src/lib/marsSim.ts` (`roughLimit`), `src/components/Planner.tsx`, `src/components/planner/LimitsSection.tsx`: campo "Max roughness" propio del rover.

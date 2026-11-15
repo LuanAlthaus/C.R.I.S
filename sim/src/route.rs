@@ -52,9 +52,11 @@ pub struct RouteParams {
     pub rover_rated_payload_kg: f32,
     /// Load the rover carries (rover mode), kg.
     pub rover_payload_kg: f32,
-    /// Cells whose relief residual (DTM roughness, m) exceeds this are impassable. 0.30 m: suited step height
-    /// NASA found acceptable (ICES-2025-294, 30.5 cm), below Perseverance's 40 cm obstacle limit.
+    /// EVA: cells whose relief residual (DTM roughness, m) exceeds this are impassable. 0.30 m: suited step height
+    /// NASA found acceptable (ICES-2025-294, 30.5 cm).
     pub rough_max_m: f32,
+    /// Rover: same rule with its own limit. 0.40 m: Perseverance's obstacle limit (NASA Mars 2020 rover facts).
+    pub rover_rough_max_m: f32,
     pub w_slope: f32,
     pub w_hazard: f32,
     pub w_thermal: f32,
@@ -80,6 +82,7 @@ impl Default for RouteParams {
             rover_rated_payload_kg: 100.0,
             rover_payload_kg: 20.0,
             rough_max_m: 0.30,
+            rover_rough_max_m: 0.40,
             w_slope: 3.0,
             w_hazard: 5.0,
             w_thermal: 0.5,
@@ -112,6 +115,14 @@ pub fn s_max_base(p: &RouteParams) -> f32 {
 /// Allowed slope: the vehicle's limit, lowered when the load factor exceeds 1.
 pub fn s_max_eff(p: &RouteParams) -> f32 {
     s_max_base(p) / weight_factor(p).max(1.0)
+}
+
+/// The vehicle's roughness limit, m.
+pub fn rough_max(p: &RouteParams) -> f32 {
+    match p.vehicle {
+        Vehicle::Eva => p.rough_max_m,
+        Vehicle::Rover => p.rover_rough_max_m,
+    }
 }
 
 /// Flat-ground speed with this load, m/s.
@@ -164,7 +175,7 @@ impl CostGrid {
     /// Which hard limits block cell `i`: (too steep, too rough, flagged impassable by the hazard model).
     pub fn limits_hit(&self, i: usize, p: &RouteParams) -> (bool, bool, bool) {
         // NASA's EVA site rule is "slope less than 20°": a cell exactly at the limit is blocked (both vehicles).
-        (self.slope[i] >= s_max_eff(p), self.rough[i] > p.rough_max_m, self.hazard_at(i, p) == 255)
+        (self.slope[i] >= s_max_eff(p), self.rough[i] > rough_max(p), self.hazard_at(i, p) == 255)
     }
 
     /// Cost multiplier for entering cell `i`; `None` = impassable.
@@ -175,7 +186,7 @@ impl CostGrid {
         }
         Some(
             1.0 + p.w_slope * (self.slope[i] / s_eff).powi(2)
-                + p.w_rough * self.rough[i] / p.rough_max_m.max(1e-3)
+                + p.w_rough * self.rough[i] / rough_max(p).max(1e-3)
                 + p.w_texture * self.texture[i] as f32 / 255.0
                 + p.w_rocks * self.rocks[i] as f32 / 255.0
                 + p.w_hazard * self.hazard_at(i, p) as f32 / 254.0
@@ -464,7 +475,7 @@ pub fn replan(
                 "status": "ok", "vehicle": vehicle, "length_m": r.length_m, "eta_min": r.eta_min,
                 "max_slope_deg": r.max_slope_deg,
                 "mean_hazard": r.mean_hazard, "weight_factor": wf, "s_max_eff_deg": s_eff,
-                "max_rough_m": r.max_rough_m, "rough_max_m": params.rough_max_m, "rock_cells": r.rock_cells,
+                "max_rough_m": r.max_rough_m, "rough_max_m": rough_max(&params), "rock_cells": r.rock_cells,
                 "max_hazard": r.max_hazard, "baseline": baseline, "direct": direct,
                 "ascent_m": ascent, "descent_m": descent, "profile": profile,
                 "start": {"lat": sa.0, "lon": sa.1}, "end": {"lat": sb.0, "lon": sb.1},
@@ -473,7 +484,7 @@ pub fn replan(
         None => serde_json::json!({
             "status": "no_path", "vehicle": vehicle, "length_m": 0, "eta_min": 0, "max_slope_deg": 0, "mean_hazard": 0,
             "weight_factor": wf, "s_max_eff_deg": s_eff, "ascent_m": 0, "descent_m": 0, "profile": [],
-            "max_rough_m": 0, "rough_max_m": params.rough_max_m, "rock_cells": 0, "max_hazard": 0,
+            "max_rough_m": 0, "rough_max_m": rough_max(&params), "rock_cells": 0, "max_hazard": 0,
             "baseline": null, "direct": direct,
             "start": {"lat": sa.0, "lon": sa.1}, "end": {"lat": sb.0, "lon": sb.1},
         }),
@@ -649,6 +660,22 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn each_vehicle_has_its_own_roughness_limit() {
+        // A 0.35 m rough wall: over the suited step (0.30 m), under the rover's obstacle limit (0.40 m).
+        let mut g = grid(20, 0.0);
+        for r in 0..20 {
+            g.rough[r * 20 + 10] = 0.35;
+        }
+        let eva = RouteParams::default();
+        assert!(plan(&g, (0, 0), (0, 19), &eva).is_none());
+        assert!(plan(&g, (0, 0), (0, 19), &rover()).is_some());
+        // Changing one vehicle's limit leaves the other alone.
+        assert!(plan(&g, (0, 0), (0, 19), &RouteParams { rover_rough_max_m: 1.0, ..eva }).is_none());
+        assert!(plan(&g, (0, 0), (0, 19), &RouteParams { rough_max_m: 0.1, ..rover() }).is_some());
+        assert!(plan(&g, (0, 0), (0, 19), &RouteParams { rover_rough_max_m: 0.3, ..rover() }).is_none());
+    }
+
+    #[test]
     fn params_json_from_the_web_app() {
         // What src/components/Planner.tsx sends through set_params.
         let p: RouteParams = serde_json::from_str(
@@ -791,6 +818,31 @@ pub(crate) mod tests {
         }
     }
 
+    /// User report: with the rover at 45° it still could not reach 23° ground. On the real site, ground at
+    /// 22–24° that the rover's own limits allow must be reachable for the rover and closed to the walker.
+    #[test]
+    fn rover_reaches_steep_ground_the_walker_cannot() {
+        let site = Site::load();
+        let g = CostGrid::from_site(&site);
+        let (eva, rov) = (RouteParams::default(), rover());
+        let steep: Vec<usize> = (0..g.n * g.n)
+            .filter(|&i| (22.0..24.0).contains(&site.slope_deg[i]) && g.multiplier(i, &rov).is_some())
+            .collect();
+        assert!(steep.len() > 1000, "{} open 22–24° cells for the rover", steep.len());
+        assert!(steep.iter().all(|&i| g.multiplier(i, &eva).is_none()));
+        let mut reached = 0;
+        for &i in steep.iter().step_by(steep.len() / 10) {
+            let goal = (i / g.n, i % g.n);
+            let start = open_near(&g, ((goal.0 + 30).min(g.n - 1), goal.1), &rov);
+            if let Some(r) = plan(&g, start, goal, &rov) {
+                reached += 1;
+                assert!(r.max_slope_deg >= 22.0 && r.max_slope_deg < s_max_eff(&rov));
+            }
+            assert!(plan(&g, start, goal, &eva).is_none());
+        }
+        assert!(reached >= 8, "rover reached {reached} of 10 steep goals");
+    }
+
     fn check_real_site(site: &Site, g: &CostGrid, p: &RouteParams) {
         let p = *p;
         let open = |c: (usize, usize)| g.multiplier(c.0 * g.n + c.1, &p).is_some();
@@ -805,7 +857,7 @@ pub(crate) mod tests {
             for &(row, col) in &r.cells {
                 let i = row * g.n + col;
                 // Never on a cell any layer marks as really dangerous for this vehicle.
-                assert!(site.slope_deg[i] < s_max_eff(&p) && site.rough_m[i] <= p.rough_max_m, "{:?}", (row, col));
+                assert!(site.slope_deg[i] < s_max_eff(&p) && site.rough_m[i] <= rough_max(&p), "{:?}", (row, col));
                 let hz = if p.vehicle == Vehicle::Eva { site.hazard[i] } else { site.hazard_phys[i] };
                 assert_ne!(hz, 255, "route enters an impassable cell {:?}", (row, col));
             }
@@ -817,7 +869,7 @@ pub(crate) mod tests {
                     assert!(open((w[1].0, w[0].1)) && open((w[0].0, w[1].1)), "corner cut {:?}", w);
                 }
             }
-            assert!(r.max_slope_deg < s_max_eff(&p) && r.max_rough_m <= p.rough_max_m);
+            assert!(r.max_slope_deg < s_max_eff(&p) && r.max_rough_m <= rough_max(&p));
             // A* is optimal under the safety weights: the shortest allowed path never scores better.
             let base_cost = path_cost(g, &base.cells, &p);
             assert!(r.cost <= base_cost + 0.01 * base.cells.len() as f32, "{} vs {}", r.cost, base_cost);

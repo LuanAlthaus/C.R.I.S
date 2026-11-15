@@ -7,7 +7,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::data::{N, Site, VScale};
 use crate::terrain::Surface;
-use crate::route::{CostGrid, Grid, RouteParams, s_max_eff};
+use crate::route::{CostGrid, Grid, RouteParams, rough_max, s_max_eff};
 
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Overlay {
@@ -107,7 +107,7 @@ pub fn compose(overlay: Overlay, site: &Site, grid: &CostGrid, p: &RouteParams) 
                 }
             }
             // Relief residual against the route's limit: green smooth .. red near the limit, purple = blocked.
-            Overlay::Rough => match site.rough_m[i] / p.rough_max_m.max(1e-3) {
+            Overlay::Rough => match site.rough_m[i] / rough_max(p).max(1e-3) {
                 t if t > 1.0 => px(PURPLE, ALPHA),
                 t => px(lerp(GREEN, RED, t), ALPHA),
             },

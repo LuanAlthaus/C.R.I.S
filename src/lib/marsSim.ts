@@ -33,8 +33,10 @@ export interface RouteParams {
   rover_rated_payload_kg: number;
   /** Load the rover carries (rover mode). */
   rover_payload_kg: number;
-  /** Cells rougher than this (DTM relief residual, m) are impassable. */
+  /** EVA: cells rougher than this (DTM relief residual, m) are impassable. */
   rough_max_m: number;
+  /** Rover: same rule with its own limit (0.40 m = Perseverance's obstacle limit). */
+  rover_rough_max_m: number;
   w_slope: number;
   w_hazard: number;
   w_thermal: number;
@@ -152,6 +154,7 @@ declare global {
 // suit_kg 104: NASA Mars suit mass target (NTRS 20260005410). s_max_base_deg 20: NASA Artemis EVA slope limit
 // (EVA-EXP-0042 Rev B). rover_s_max_deg 45: experimental simulation parameter (team), not a NASA rover rating.
 // rover_kg 1025: Perseverance mass (NASA). rough_max_m 0.30: suited step height NASA tested (ICES-2025-294).
+// rover_rough_max_m 0.40: Perseverance obstacle limit (NASA Mars 2020 rover facts).
 export const DEFAULT_PARAMS: RouteParams = {
   vehicle: "eva",
   body_kg: 80,
@@ -163,6 +166,7 @@ export const DEFAULT_PARAMS: RouteParams = {
   rover_rated_payload_kg: 100,
   rover_payload_kg: 20,
   rough_max_m: 0.3,
+  rover_rough_max_m: 0.4,
   w_slope: 3,
   w_hazard: 5,
   w_thermal: 0.5,
@@ -262,6 +266,11 @@ export function weightFactor(p: RouteParams) {
 export function allowedSlope(p: RouteParams) {
   const base = p.vehicle === "rover" ? p.rover_s_max_deg : p.s_max_base_deg;
   return base / Math.max(weightFactor(p), 1);
+}
+
+// Mirrors rough_max in sim/src/route.rs.
+export function roughLimit(p: RouteParams) {
+  return p.vehicle === "rover" ? p.rover_rough_max_m : p.rough_max_m;
 }
 
 export function getSim(): MarsSimApi | null {

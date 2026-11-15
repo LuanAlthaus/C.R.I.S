@@ -12,6 +12,7 @@ type NumKey = Exclude<keyof RouteParams, "vehicle">;
 type Field = { key: NumKey; label: string; unit: string; min: number; max: number; step: number };
 
 const ROUGH: Field = { key: "rough_max_m", label: "Max roughness", unit: "m", min: 0.05, max: 2, step: 0.05 };
+const ROVER_ROUGH: Field = { ...ROUGH, key: "rover_rough_max_m" };
 
 const LOAD_FIELDS: Record<Vehicle, Field[]> = {
   eva: [
@@ -25,7 +26,7 @@ const LOAD_FIELDS: Record<Vehicle, Field[]> = {
     { key: "rover_payload_kg", label: "Payload", unit: "kg", min: 0, max: 2000, step: 1 },
     { key: "rover_rated_payload_kg", label: "Rated payload", unit: "kg", min: 0, max: 2000, step: 1 },
     { key: "rover_s_max_deg", label: "Max slope", unit: "°", min: 1, max: 60, step: 0.5 },
-    ROUGH,
+    ROVER_ROUGH,
   ],
 };
 
@@ -192,8 +193,8 @@ function LimitNotes({ rover }: { rover: boolean }) {
         <p>
           Rover mass 1,025 kg and top speed 4.2 cm/s on flat hard ground = Perseverance (NASA Mars 2020 rover facts).
           Max slope 45° and rated payload 100 kg are team simulation parameters; loads above the rated payload lower
-          the slope limit in proportion to total mass. Max roughness 0.30 m is kept from the EVA settings, under
-          Perseverance&apos;s 40 cm obstacle limit.
+          the slope limit in proportion to total mass. Max roughness 0.40 m = Perseverance&apos;s 40 cm obstacle
+          limit (NASA Mars 2020 rover facts), set apart from the EVA value.
         </p>
       ) : (
         <>

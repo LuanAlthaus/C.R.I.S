@@ -1,6 +1,6 @@
 # kaz/handoff — C.R.I.S (challenge 10 "Martian Map"; antes "Jezero Marswalk Planner")
 
-Actualizado: 2026-11-15 12:00 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
+Actualizado: 2026-11-15 17:20 -03. Se actualiza cada hora. Al abrir una sesión nueva: leer este archivo y seguir desde **Siguiente**.
 
 ## Cómo retomar
 1. Abrir una sesión del agente en `~/Hackaton/nasa-space-apps-starter-template` (Claude Code lee `CLAUDE.md`, que apunta acá).
@@ -116,6 +116,12 @@ Pedido: "mejorar el modelado 3D en base a las texturas para que sea realista y s
 - GitHub: `origin/kaz` y `origin/main` quedaron en `1150335` (push por SSH del 15 nov, antes de esta rama). `kaz-textures-3D-renew` es local: no se subió.
 - **Bug del final del recorrido** (pedido a mitad de sesión: "no se detiene exactamente ahí; al terminar se debe quedar ahí y se debe poder elegir otro punto desde su posición actual"). Causa: la línea de la ruta pasaba por los centros de celda (el último quedaba hasta ~7 m del pin) y `advance` dejaba al rover un cuadro antes del final. Arreglo: `route::route_line` hace que la línea empiece y termine en los puntos clicados; al llegar, `rover::advance` pone al rover sobre el destino, lo convierte en el nuevo inicio (`ends.start = ends.end.take()`), deja el modo de colocación en END y emite `mars-rover-stopped` con el mismo JSON que un `mars-pick` de inicio. `Planner.tsx` copia eso: inicio = punto alcanzado, fin y ruta vacíos. El siguiente clic planifica desde donde quedó el rover. Se borró `rewind_if_finished` (ya no hay ruta terminada que rebobinar). Test nuevo: `route_line_starts_and_ends_on_the_clicked_points`.
   Navegador: la parada queda a 0,0 m del destino; tras llegar, la tarjeta Start muestra el destino, End queda en "Click the terrain" y Play se deshabilita; el pin verde aparece sobre el rover; el segundo tramo (14 m) sale a 0,0 m de donde paró y termina a 0,0 m del segundo destino. fps con este build: Rover quieto 35, andando 28, Drone 37 (una medición de 15,6 en el build anterior fue ruido).
+
+## Hecho (sesión 16:45–17:20 del 15 nov, rama `fix-slope`)
+Pedido: "el slope cap del rover es 45 pero no puede pasar por zonas de 23; que los parámetros del astronauta y del rover no se afecten".
+- **Causa:** el commit `2caa981` (Jeremías: `Vehicle`, `hazard_phys`, `set_rover_speed`) no recompiló el WASM. El WASM viejo descartaba `vehicle`/`rover_s_max_deg` y el rover planificaba con 20°. **Regla: todo cambio en `sim/src` exige `bash scripts/build-sim.sh` y commitear `public/sim/`.**
+- Rugosidad por vehículo: `rover_rough_max_m` 0,40 m (EVA 0,30 m) y `route::rough_max`; campo propio en la UI (`roughLimit` en `marsSim.ts`). Con 0,30 compartido el rover perdía 2337 de 5820 celdas de 22–24°.
+- `cargo test --lib` 28/28 (nuevos: `each_vehicle_has_its_own_roughness_limit`, `rover_reaches_steep_ground_the_walker_cannot`; cota de relieve en `rover.rs` 8° → 10°). Navegador (UI real, 8 pasos alternando vehículo y cambiando límites de pendiente y rugosidad de cada uno): ningún cambio afecta al otro vehículo; sin errores de consola. WASM 27 MB optimizado.
 
 ## Siguiente
 1. El equipo decide si `kaz-tests` pasa a `main`; revisar y, si hace falta, editar las reglas y umbrales de `autolabel`. (Hecho 17:35 del 14 nov: rama publicada, `bbd8411`.)
