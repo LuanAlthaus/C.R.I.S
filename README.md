@@ -26,7 +26,7 @@ C.R.I.S (Center Reconnaissance Interplanetary Survival) helps mission teams plan
 
 ## Demo
 
-- **Slides:** [SLIDES LINK, PDF]
+- **Slides:** [drive.google.com/drive/folders/1tJeI-4hkSigZBauFm4LxRAol7lNBC77f?usp=sharing](https://drive.google.com/drive/folders/1tJeI-4hkSigZBauFm4LxRAol7lNBC77f?usp=sharing)
 - **Live app:** [c-r-i-s.vercel.app](https://c-r-i-s.vercel.app)
 - **Final project:** [github.com/LuanAlthaus/C.R.I.S](https://github.com/LuanAlthaus/C.R.I.S)
 
