@@ -1,10 +1,12 @@
+}}
+
 # C.R.I.S
 
 **A 3D EVA route planner for Jezero crater, Mars.**
 Built for the NASA Space Apps Challenge 2026, challenge *Interplanetary Survival Guide: Martian Map*.
 
 <p align="center">
-  <img src="logo.jpeg" alt="C.R.I.S logo" width="400">
+  <img src="docs/logo.jpeg" alt="C.R.I.S logo" width="400">
 </p>
 
 ## Overview
@@ -13,7 +15,7 @@ C.R.I.S (Center Reconnaissance Interplanetary Survival) helps mission teams plan
 
 ## Team
 
-- **Team Owner:** Insaurralde Niven, Juan Manuel (kazu)
+- **Team Owner:** Back Althaus, Luan Henrique (khy4n_rezz)
 - **Members:**
   - Insaurralde Niven, Juan Manue (kazu)
   - Back Althaus, Luan Henrique (khy4n_rezz)
@@ -24,10 +26,11 @@ C.R.I.S (Center Reconnaissance Interplanetary Survival) helps mission teams plan
 
 ## Demo
 
-- **Video (30 s):** [PAGE LINK]
-- **Live app:** [VERCEL URL, if deployed]
+- **Slides:** [SLIDES LINK, PDF]
+- **Live app:** [c-r-i-s.vercel.app](https://c-r-i-s.vercel.app)
+- **Final project:** [github.com/LuanAlthaus/C.R.I.S](https://github.com/LuanAlthaus/C.R.I.S)
 
-![C.R.I.S screenshot](screenshot.png)
+![C.R.I.S screenshot](docs/screenshot.png)
 
 ## Objectives
 
@@ -43,7 +46,6 @@ C.R.I.S (Center Reconnaissance Interplanetary Survival) helps mission teams plan
 - Built the data pipeline that turns NASA terrain data into hazard layers (slope, roughness, sky-view factor).
 - Integrated the Bevy simulation into the web app through WebAssembly.
 - Connected NASA context data: InSight weather, DONKI space weather, MODIS temperature, and Perseverance waypoints.
-- [TEAM TO CONFIRM: the route check against the slope and step-height limits. Write "fully working" or "partially working," whichever is true.]
 
 ## Features
 
@@ -98,40 +100,6 @@ To rebuild the terrain data and the simulation:
 ```bash
 python notebooks/jezero_pipeline.py <stage>
 bash scripts/build-sim.sh
-```
-
-## Project structure
-
-```
-C.R.I.S/
-├── src/                          # Next.js app
-│   ├── app/
-│   │   └── api/
-│   │       └── nasa/
-│   │           ├── donki-mars/   # DONKI space weather route
-│   │           └── raw-images/   # Perseverance raw image route
-│   ├── components/
-│   │   └── MarsSim.tsx           # Mounts the Bevy simulation in the page
-│   └── lib/
-│       └── marsSim.ts            # Bridge between the web app and the WASM sim
-├── sim/                          # Bevy simulation (Rust), compiled to WebAssembly
-├── notebooks/
-│   ├── jezero_pipeline.py        # Terrain data pipeline (NASA data → tiles and layers)
-│   └── labels/
-│       └── jezero_patches.csv    # Hazard training labels (made by hand)
-├── public/
-│   └── data/jezero/
-│       ├── tiles/                # 1 km HiRISE detail tiles
-│       └── rover.glb             # Perseverance 3D model (NASA logos removed)
-├── .claude/skills/               # Agent skills used during development
-├── AGENTS.md                     # Rules for coding agents
-├── CLAUDE.md                     # Rules for Claude Code
-├── LICENSE                       # MIT
-├── README.md
-├── package.json
-├── next.config.ts
-├── tsconfig.json
-└── vercel.json
 ```
 
 ## Use of Super Intelligence (SI)
